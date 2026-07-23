@@ -1,0 +1,16 @@
+[project]
+name = "service-advisor-api"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = ["fastapi>=0.115", "uvicorn[standard]>=0.34"]
+
+[dependency-groups]
+dev = ["httpx>=0.28", "pytest>=8.3", "ruff>=0.9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
