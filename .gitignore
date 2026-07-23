@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+apps/*/node_modules/
+apps/*/.venv/
+apps/*/.uv-cache/
+apps/*/.pytest_cache/
+apps/*/.ruff_cache/
+apps/**/__pycache__/
+apps/web/dist/
+apps/web/openapi-ts-error-*.log

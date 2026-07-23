@@ -1,0 +1,12 @@
+{
+  "name": "service-advisor-ai",
+  "private": true,
+  "scripts": {
+    "check": "pnpm --filter web check",
+    "generate:api": "pnpm --filter web generate:api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "packageManager": "pnpm@11.6.0"
+}
