@@ -8,3 +8,5 @@ apps/*/.ruff_cache/
 apps/**/__pycache__/
 apps/web/dist/
 apps/web/openapi-ts-error-*.log
+apps/web/test-results/
+apps/web/playwright-report/

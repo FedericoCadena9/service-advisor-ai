@@ -1,0 +1,25 @@
+name: CI
+
+on: [pull_request, push]
+
+jobs:
+  fast-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: astral-sh/setup-uv@v5
+      - run: pnpm install --frozen-lockfile
+      - run: uv --directory apps/api sync --all-groups --frozen
+      - run: uv --directory apps/api run uvicorn service_advisor_api.main:app --host 127.0.0.1 --port 8000 > /tmp/service-advisor-api.log 2>&1 &
+      - run: until curl --fail --silent http://127.0.0.1:8000/health; do sleep 1; done
+      - run: pnpm generate:api
+      - run: git diff --exit-code -- apps/web/src/api/generated
+      - run: make check
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: make smoke
