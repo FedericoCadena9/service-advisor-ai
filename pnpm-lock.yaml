@@ -12,6 +12,55 @@ importers:
         specifier: ^9.1.2
         version: 9.2.4
 
+  apps/interview-game:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.51.0
+        version: 1.61.1
+      '@testing-library/jest-dom':
+        specifier: ^6.6.0
+        version: 6.10.0(@testing-library/dom@10.4.1)
+      '@testing-library/react':
+        specifier: ^16.2.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: ^24.2.0
+        version: 24.13.3
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^4.4.0
+        version: 4.7.0(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0))
+      eslint:
+        specifier: ^9.20.0
+        version: 9.39.5(jiti@2.7.0)
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.24.0
+        version: 8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      vite:
+        specifier: ^6.1.0
+        version: 6.4.3(@types/node@24.13.3)(jiti@2.7.0)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(jiti@2.7.0)(jsdom@26.1.0)
+
   apps/web:
     dependencies:
       '@hey-api/client-fetch':

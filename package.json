@@ -2,8 +2,11 @@
   "name": "service-advisor-ai",
   "private": true,
   "scripts": {
-    "check": "pnpm --filter web check",
-    "generate:api": "pnpm --filter web generate:api"
+    "check": "pnpm --filter web check && pnpm --filter interview-game check",
+    "generate:api": "pnpm --filter web generate:api",
+    "interview:dev": "pnpm --filter interview-game dev --host 127.0.0.1 --port 4174",
+    "interview:check": "pnpm --filter interview-game check",
+    "interview:test:e2e": "pnpm --filter interview-game test:e2e"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
