@@ -19,6 +19,7 @@ from service_advisor_api.checkins import (
     UseProfile,
     validate_checkin,
 )
+from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
 
@@ -84,6 +85,7 @@ overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
 vehicle_store.seed()
 checkin_store = CheckinStore()
+knowledge_pack = KnowledgePack()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -166,6 +168,13 @@ def list_demo_sessions(
         )
         for overlay in overlay_store.list_for_shop(claims.shop_id)
     ]
+
+
+@app.get("/admin/knowledge/civic-rule")
+def inspect_civic_rule(claims: Annotated[SessionClaims, Depends(current_session)]) -> dict[str, dict[str, object]]:
+    if claims.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role is required")
+    return knowledge_pack.inspection()
 
 
 @app.get("/vehicles/search", response_model=list[VehicleSearchResponse])
