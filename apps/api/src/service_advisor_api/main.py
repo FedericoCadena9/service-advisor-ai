@@ -21,6 +21,7 @@ from service_advisor_api.checkins import (
 )
 from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
+from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
 
 
@@ -80,12 +81,25 @@ class CheckinResponse(CheckinRequest):
     prior_mileage_km: int
 
 
+class ServiceRecordResponse(BaseModel):
+    id: str
+    service_code: str
+    status: str
+
+
+class ServiceHistoryResponse(BaseModel):
+    completed: list[ServiceRecordResponse]
+    declined: list[ServiceRecordResponse]
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
 vehicle_store.seed()
 checkin_store = CheckinStore()
 knowledge_pack = KnowledgePack()
+service_history_store = CivicServiceHistoryStore()
+service_history_store.seed()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -194,6 +208,27 @@ def get_vehicle(
     if vehicle is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
     return VehicleSummaryResponse.model_validate(vehicle, from_attributes=True)
+
+
+def _service_record_response(record: ServiceRecord) -> ServiceRecordResponse:
+    return ServiceRecordResponse(id=record.id, service_code=record.service_code, status=record.status)
+
+
+@app.get("/vehicles/{vehicle_id}/history", response_model=ServiceHistoryResponse)
+def get_service_history(
+    vehicle_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> ServiceHistoryResponse:
+    return ServiceHistoryResponse(
+        completed=[
+            _service_record_response(record)
+            for record in service_history_store.completed(claims.shop_id, vehicle_id)
+        ],
+        declined=[
+            _service_record_response(record)
+            for record in service_history_store.declined(claims.shop_id, vehicle_id)
+        ],
+    )
 
 
 def _checkin_response(checkin: Checkin) -> CheckinResponse:

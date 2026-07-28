@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from service_advisor_api.knowledge import KnowledgePack
+from service_advisor_api.service_history import ServiceRecord
 
 DueState = Literal["overdue", "due_now", "due_soon", "completed", "declined", "informational"]
 
@@ -17,6 +18,7 @@ class Recommendation:
     citation_section: str | None
     confidence: str
     warnings: tuple[str, ...]
+    declined_service_ids: tuple[str, ...] = ()
 
 
 def evaluate_civic_maintenance(
@@ -24,6 +26,8 @@ def evaluate_civic_maintenance(
     checked_in_on: str,
     *,
     evidence_available: bool = True,
+    completed_services: tuple[ServiceRecord, ...] = (),
+    declined_services: tuple[ServiceRecord, ...] = (),
 ) -> Recommendation:
     del checked_in_on
     source, rule = KnowledgePack().reviewed_civic_rule()
@@ -33,6 +37,11 @@ def evaluate_civic_maintenance(
             due_reason="No actionable rule can be established", citation_page=None,
             citation_section=None, confidence="insufficient", warnings=("Reviewed evidence is unavailable",),
         )
+    if any(record.service_code == rule.service_code for record in completed_services):
+        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", ())
+    relevant_declines = tuple(record.id for record in declined_services if record.service_code == rule.service_code)
+    if relevant_declines:
+        return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", (), relevant_declines)
     if current_mileage_km > 50_000:
         state, reason = "overdue", "Mileage exceeds the 50,000 km interval"
     elif current_mileage_km >= 48_000:
