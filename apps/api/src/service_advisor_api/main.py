@@ -13,6 +13,7 @@ from service_advisor_api.auth import (
     create_demo_session,
     verify_demo_session,
 )
+from service_advisor_api.chat import answer_contextual_question
 from service_advisor_api.checkins import (
     Checkin,
     CheckinStore,
@@ -130,6 +131,12 @@ class ExplanationResponse(BaseModel):
     citation_page: int | None
     citation_section: str | None
     degraded: bool
+
+
+class ChatRequest(BaseModel):
+    question: str
+    current_mileage_km: int
+    provider_available: bool
 
 
 app = FastAPI(title="Service Advisor API", version="0.1.0")
@@ -389,3 +396,10 @@ def create_explanation(request: ExplanationRequest, claims: Annotated[SessionCla
     del claims
     explanation = explain_recommendation(evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27", evidence_available=request.evidence_available))
     return ExplanationResponse(**explanation.__dict__)
+
+
+@app.post("/contextual-chat", response_model=ExplanationResponse)
+def contextual_chat(request: ChatRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> ExplanationResponse:
+    del claims
+    reply = answer_contextual_question(request.question, evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27"), request.provider_available)
+    return ExplanationResponse(**reply.__dict__)
