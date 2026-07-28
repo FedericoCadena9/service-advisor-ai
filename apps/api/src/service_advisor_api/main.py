@@ -19,6 +19,7 @@ from service_advisor_api.checkins import (
     UseProfile,
     validate_checkin,
 )
+from service_advisor_api.explanations import explain_recommendation
 from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
 from service_advisor_api.recommendations import evaluate_civic_maintenance
@@ -116,6 +117,18 @@ class AdvisorRunResponse(BaseModel):
 
 class AdvisorDecisionRequest(BaseModel):
     decision: Literal["approve", "reject"]
+
+
+class ExplanationRequest(BaseModel):
+    current_mileage_km: int
+    evidence_available: bool
+
+
+class ExplanationResponse(BaseModel):
+    text: str
+    citation_page: int | None
+    citation_section: str | None
+    degraded: bool
 
 
 app = FastAPI(title="Service Advisor API", version="0.1.0")
@@ -359,3 +372,10 @@ def resume_advisor_run(run_id: str, claims: Annotated[SessionClaims, Depends(cur
 def decide_advisor_run(run_id: str, request: AdvisorDecisionRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
     workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id)
     return _run_response(workflow_store.decide(run_id, request.decision))
+
+
+@app.post("/explanations", response_model=ExplanationResponse)
+def create_explanation(request: ExplanationRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> ExplanationResponse:
+    del claims
+    explanation = explain_recommendation(evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27", evidence_available=request.evidence_available))
+    return ExplanationResponse(**explanation.__dict__)
