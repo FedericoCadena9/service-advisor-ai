@@ -9,6 +9,7 @@ import type {
 } from './api/generated/types.gen'
 import { fetchHealth } from './api/health'
 import { searchDemoVehicles } from './api/vehicles'
+import { fetchRecommendation } from './api/recommendations'
 import { RecommendationConsole } from './components/advisor/RecommendationConsole'
 
 type HealthState = 'loading' | 'healthy' | 'unavailable'
@@ -26,6 +27,7 @@ export default function App() {
   const [appointmentWindow, setAppointmentWindow] = useState('')
   const [messageConsent, setMessageConsent] = useState(false)
   const [checkinSaved, setCheckinSaved] = useState(false)
+  const [recommendation, setRecommendation] = useState<import('./api/generated/types.gen').RecommendationResponse>()
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -82,6 +84,7 @@ export default function App() {
         message_consent: messageConsent,
       })
       setCheckinSaved(true)
+      setRecommendation(await fetchRecommendation(token))
     } catch {
       setSessionError('Check-in could not be saved')
     }
@@ -170,7 +173,7 @@ export default function App() {
             <button type="submit">Confirm check-in</button>
           </form>
           {checkinSaved && <p role="status">Check-in confirmed</p>}
-          <RecommendationConsole />
+          <RecommendationConsole recommendation={recommendation} />
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

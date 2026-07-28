@@ -121,6 +121,84 @@ export type HealthResponse = {
 };
 
 /**
+ * RecommendationResponse
+ */
+export type RecommendationResponse = {
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Actionable
+     */
+    actionable: boolean;
+    /**
+     * Service Code
+     */
+    service_code: string | null;
+    /**
+     * Rule Version
+     */
+    rule_version: string | null;
+    /**
+     * Due Reason
+     */
+    due_reason: string;
+    /**
+     * Citation Page
+     */
+    citation_page: number | null;
+    /**
+     * Citation Section
+     */
+    citation_section: string | null;
+    /**
+     * Confidence
+     */
+    confidence: string;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+    /**
+     * Declined Service Ids
+     */
+    declined_service_ids: Array<string>;
+};
+
+/**
+ * ServiceHistoryResponse
+ */
+export type ServiceHistoryResponse = {
+    /**
+     * Completed
+     */
+    completed: Array<ServiceRecordResponse>;
+    /**
+     * Declined
+     */
+    declined: Array<ServiceRecordResponse>;
+};
+
+/**
+ * ServiceRecordResponse
+ */
+export type ServiceRecordResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Service Code
+     */
+    service_code: string;
+    /**
+     * Status
+     */
+    status: string;
+};
+
+/**
  * ValidationError
  */
 export type ValidationError = {
@@ -377,6 +455,42 @@ export type ListDemoSessionsAdminDemoSessionsGetResponses = {
 
 export type ListDemoSessionsAdminDemoSessionsGetResponse = ListDemoSessionsAdminDemoSessionsGetResponses[keyof ListDemoSessionsAdminDemoSessionsGetResponses];
 
+export type InspectCivicRuleAdminKnowledgeCivicRuleGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/admin/knowledge/civic-rule';
+};
+
+export type InspectCivicRuleAdminKnowledgeCivicRuleGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type InspectCivicRuleAdminKnowledgeCivicRuleGetError = InspectCivicRuleAdminKnowledgeCivicRuleGetErrors[keyof InspectCivicRuleAdminKnowledgeCivicRuleGetErrors];
+
+export type InspectCivicRuleAdminKnowledgeCivicRuleGetResponses = {
+    /**
+     * Response Inspect Civic Rule Admin Knowledge Civic Rule Get
+     * Successful Response
+     */
+    200: {
+        [key: string]: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type InspectCivicRuleAdminKnowledgeCivicRuleGetResponse = InspectCivicRuleAdminKnowledgeCivicRuleGetResponses[keyof InspectCivicRuleAdminKnowledgeCivicRuleGetResponses];
+
 export type SearchVehiclesVehiclesSearchGetData = {
     body?: never;
     headers?: {
@@ -450,6 +564,42 @@ export type GetVehicleVehiclesVehicleIdGetResponses = {
 
 export type GetVehicleVehiclesVehicleIdGetResponse = GetVehicleVehiclesVehicleIdGetResponses[keyof GetVehicleVehiclesVehicleIdGetResponses];
 
+export type GetServiceHistoryVehiclesVehicleIdHistoryGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Vehicle Id
+         */
+        vehicle_id: string;
+    };
+    query?: never;
+    url: '/vehicles/{vehicle_id}/history';
+};
+
+export type GetServiceHistoryVehiclesVehicleIdHistoryGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetServiceHistoryVehiclesVehicleIdHistoryGetError = GetServiceHistoryVehiclesVehicleIdHistoryGetErrors[keyof GetServiceHistoryVehiclesVehicleIdHistoryGetErrors];
+
+export type GetServiceHistoryVehiclesVehicleIdHistoryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ServiceHistoryResponse;
+};
+
+export type GetServiceHistoryVehiclesVehicleIdHistoryGetResponse = GetServiceHistoryVehiclesVehicleIdHistoryGetResponses[keyof GetServiceHistoryVehiclesVehicleIdHistoryGetResponses];
+
 export type CreateCheckinVehiclesVehicleIdCheckInsPostData = {
     body: CheckinRequest;
     headers?: {
@@ -521,6 +671,42 @@ export type GetCheckinVehiclesVehicleIdCheckInGetResponses = {
 };
 
 export type GetCheckinVehiclesVehicleIdCheckInGetResponse = GetCheckinVehiclesVehicleIdCheckInGetResponses[keyof GetCheckinVehiclesVehicleIdCheckInGetResponses];
+
+export type GetRecommendationVehiclesVehicleIdRecommendationGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Vehicle Id
+         */
+        vehicle_id: string;
+    };
+    query?: never;
+    url: '/vehicles/{vehicle_id}/recommendation';
+};
+
+export type GetRecommendationVehiclesVehicleIdRecommendationGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetRecommendationVehiclesVehicleIdRecommendationGetError = GetRecommendationVehiclesVehicleIdRecommendationGetErrors[keyof GetRecommendationVehiclesVehicleIdRecommendationGetErrors];
+
+export type GetRecommendationVehiclesVehicleIdRecommendationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: RecommendationResponse;
+};
+
+export type GetRecommendationVehiclesVehicleIdRecommendationGetResponse = GetRecommendationVehiclesVehicleIdRecommendationGetResponses[keyof GetRecommendationVehiclesVehicleIdRecommendationGetResponses];
 
 export type ClientOptions = {
     baseUrl: 'http://127.0.0.1:8000' | (string & {});
