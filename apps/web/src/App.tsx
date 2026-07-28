@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
+import { saveCheckin } from './api/checkins'
 import { enterDemoWorkspace } from './api/demo-session'
 import type {
   CreateDemoSessionRequest,
@@ -17,6 +18,13 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [vehicles, setVehicles] = useState<VehicleSearchResponse[]>([])
+  const [checkinMileage, setCheckinMileage] = useState('')
+  const [useProfile, setUseProfile] = useState<'normal' | 'severe'>('normal')
+  const [severeUseFactors, setSevereUseFactors] = useState('')
+  const [concern, setConcern] = useState('')
+  const [appointmentWindow, setAppointmentWindow] = useState('')
+  const [messageConsent, setMessageConsent] = useState(false)
+  const [checkinSaved, setCheckinSaved] = useState(false)
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -55,6 +63,29 @@ export default function App() {
     }
   }
 
+  async function submitCheckin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!token) return
+
+    try {
+      await saveCheckin(token, {
+        current_mileage_km: Number(checkinMileage),
+        checked_in_on: new Date().toISOString().slice(0, 10),
+        use_profile: useProfile,
+        severe_use_factors: severeUseFactors
+          .split(',')
+          .map((factor) => factor.trim())
+          .filter(Boolean),
+        concern,
+        appointment_window: appointmentWindow,
+        message_consent: messageConsent,
+      })
+      setCheckinSaved(true)
+    } catch {
+      setSessionError('Check-in could not be saved')
+    }
+  }
+
   return (
     <main>
       <h1>Service Advisor AI</h1>
@@ -88,6 +119,56 @@ export default function App() {
               <li key={vehicle.id}>{`${vehicle.vehicle_label} — Demo data`}</li>
             ))}
           </ul>
+          <form onSubmit={submitCheckin} aria-labelledby="checkin-heading">
+            <h3 id="checkin-heading">Vehicle check-in</h3>
+            <label htmlFor="current-mileage">Current mileage (km)</label>
+            <input
+              id="current-mileage"
+              type="number"
+              min="42500"
+              required
+              value={checkinMileage}
+              onChange={(event) => setCheckinMileage(event.target.value)}
+            />
+            <label htmlFor="use-profile">Use profile</label>
+            <select
+              id="use-profile"
+              value={useProfile}
+              onChange={(event) => setUseProfile(event.target.value as 'normal' | 'severe')}
+            >
+              <option value="normal">Normal use</option>
+              <option value="severe">Severe use</option>
+            </select>
+            <label htmlFor="severe-use-factors">Severe use factors</label>
+            <input
+              id="severe-use-factors"
+              value={severeUseFactors}
+              onChange={(event) => setSevereUseFactors(event.target.value)}
+            />
+            <label htmlFor="concern">Written concern</label>
+            <textarea
+              id="concern"
+              required
+              value={concern}
+              onChange={(event) => setConcern(event.target.value)}
+            />
+            <label htmlFor="appointment-window">Desired appointment window</label>
+            <input
+              id="appointment-window"
+              required
+              value={appointmentWindow}
+              onChange={(event) => setAppointmentWindow(event.target.value)}
+            />
+            <label htmlFor="message-consent">Consent to prepare a message</label>
+            <input
+              id="message-consent"
+              type="checkbox"
+              checked={messageConsent}
+              onChange={(event) => setMessageConsent(event.target.checked)}
+            />
+            <button type="submit">Confirm check-in</button>
+          </form>
+          {checkinSaved && <p role="status">Check-in confirmed</p>}
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

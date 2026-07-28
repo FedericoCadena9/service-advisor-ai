@@ -12,6 +12,13 @@ from service_advisor_api.auth import (
     create_demo_session,
     verify_demo_session,
 )
+from service_advisor_api.checkins import (
+    Checkin,
+    CheckinStore,
+    InvalidCheckinError,
+    UseProfile,
+    validate_checkin,
+)
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
 
@@ -58,10 +65,25 @@ class VehicleSummaryResponse(BaseModel):
     is_demo_data: bool
 
 
+class CheckinRequest(BaseModel):
+    current_mileage_km: int
+    checked_in_on: str
+    use_profile: UseProfile
+    severe_use_factors: list[str]
+    concern: str
+    appointment_window: str
+    message_consent: bool
+
+
+class CheckinResponse(CheckinRequest):
+    prior_mileage_km: int
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
 vehicle_store.seed()
+checkin_store = CheckinStore()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -163,3 +185,60 @@ def get_vehicle(
     if vehicle is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
     return VehicleSummaryResponse.model_validate(vehicle, from_attributes=True)
+
+
+def _checkin_response(checkin: Checkin) -> CheckinResponse:
+    return CheckinResponse(
+        current_mileage_km=checkin.current_mileage_km,
+        prior_mileage_km=checkin.prior_mileage_km,
+        checked_in_on=checkin.checked_in_on,
+        use_profile=checkin.use_profile,
+        severe_use_factors=list(checkin.severe_use_factors),
+        concern=checkin.concern,
+        appointment_window=checkin.appointment_window,
+        message_consent=checkin.message_consent,
+    )
+
+
+@app.post(
+    "/vehicles/{vehicle_id}/check-ins",
+    response_model=CheckinResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_checkin(
+    vehicle_id: str,
+    request: CheckinRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> CheckinResponse:
+    vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    try:
+        checkin = validate_checkin(
+            prior_mileage_km=vehicle.prior_mileage_km,
+            **request.model_dump(),
+        )
+    except InvalidCheckinError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    checkin_store.save(
+        shop_id=claims.shop_id,
+        demo_session_id=claims.demo_session_id,
+        vehicle_id=vehicle_id,
+        checkin=checkin,
+    )
+    return _checkin_response(checkin)
+
+
+@app.get("/vehicles/{vehicle_id}/check-in", response_model=CheckinResponse)
+def get_checkin(
+    vehicle_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> CheckinResponse:
+    checkin = checkin_store.get(
+        shop_id=claims.shop_id,
+        demo_session_id=claims.demo_session_id,
+        vehicle_id=vehicle_id,
+    )
+    if checkin is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Check-in not found")
+    return _checkin_response(checkin)

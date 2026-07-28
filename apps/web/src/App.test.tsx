@@ -46,3 +46,12 @@ test('offers an accessible vehicle search after the demo workspace opens', async
 
   expect(await screen.findByRole('searchbox', { name: 'Search demo vehicle' })).toBeVisible()
 })
+
+test('renders labeled check-in controls for an Advisor workspace', async () => {
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Enter as Advisor' }))
+
+  expect(await screen.findByLabelText('Current mileage (km)')).toBeVisible()
+  expect(screen.getByLabelText('Severe use factors')).toBeVisible()
+  expect(screen.getByLabelText('Consent to prepare a message')).toBeVisible()
+})
