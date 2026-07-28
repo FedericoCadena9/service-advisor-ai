@@ -2,6 +2,7 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from service_advisor_api.auth import (
@@ -366,6 +367,15 @@ def resume_advisor_run(run_id: str, claims: Annotated[SessionClaims, Depends(cur
         return _run_response(workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id))
     except (KeyError, PermissionError) as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Advisor run not found") from error
+
+
+@app.get("/advisor-runs/{run_id}/events")
+def stream_advisor_run_events(run_id: str, claims: Annotated[SessionClaims, Depends(current_session)]) -> StreamingResponse:
+    try:
+        run = workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id)
+    except (KeyError, PermissionError) as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Advisor run not found") from error
+    return StreamingResponse((f"data: {event}\n\n" for event in run.events), media_type="text/event-stream")
 
 
 @app.post("/advisor-runs/{run_id}/decision", response_model=AdvisorRunResponse)
