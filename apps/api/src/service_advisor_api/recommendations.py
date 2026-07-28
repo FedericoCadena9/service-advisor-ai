@@ -37,9 +37,9 @@ def evaluate_civic_maintenance(
             due_reason="No actionable rule can be established", citation_page=None,
             citation_section=None, confidence="insufficient", warnings=("Reviewed evidence is unavailable",),
         )
-    if any(record.service_code == rule.service_code for record in completed_services):
-        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", ())
     relevant_declines = tuple(record.id for record in declined_services if record.service_code == rule.service_code)
+    if any(record.service_code == rule.service_code for record in completed_services):
+        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", (), relevant_declines)
     if relevant_declines:
         return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", (), relevant_declines)
     if current_mileage_km > 50_000:

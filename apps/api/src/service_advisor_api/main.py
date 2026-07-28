@@ -21,6 +21,7 @@ from service_advisor_api.checkins import (
 )
 from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
+from service_advisor_api.recommendations import evaluate_civic_maintenance
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
 
@@ -90,6 +91,19 @@ class ServiceRecordResponse(BaseModel):
 class ServiceHistoryResponse(BaseModel):
     completed: list[ServiceRecordResponse]
     declined: list[ServiceRecordResponse]
+
+
+class RecommendationResponse(BaseModel):
+    state: str
+    actionable: bool
+    service_code: str | None
+    rule_version: str | None
+    due_reason: str
+    citation_page: int | None
+    citation_section: str | None
+    confidence: str
+    warnings: list[str]
+    declined_service_ids: list[str]
 
 
 app = FastAPI(title="Service Advisor API", version="0.1.0")
@@ -286,3 +300,26 @@ def get_checkin(
     if checkin is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Check-in not found")
     return _checkin_response(checkin)
+
+
+@app.get("/vehicles/{vehicle_id}/recommendation", response_model=RecommendationResponse)
+def get_recommendation(
+    vehicle_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> RecommendationResponse:
+    checkin = checkin_store.get(shop_id=claims.shop_id, demo_session_id=claims.demo_session_id, vehicle_id=vehicle_id)
+    if checkin is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Confirm a check-in before requesting recommendations")
+    recommendation = evaluate_civic_maintenance(checkin.current_mileage_km, checkin.checked_in_on, completed_services=service_history_store.completed(claims.shop_id, vehicle_id), declined_services=service_history_store.declined(claims.shop_id, vehicle_id))
+    return RecommendationResponse(
+        state=recommendation.state,
+        actionable=recommendation.actionable,
+        service_code=recommendation.service_code,
+        rule_version=recommendation.rule_version,
+        due_reason=recommendation.due_reason,
+        citation_page=recommendation.citation_page,
+        citation_section=recommendation.citation_section,
+        confidence=recommendation.confidence,
+        warnings=list(recommendation.warnings),
+        declined_service_ids=list(recommendation.declined_service_ids),
+    )
