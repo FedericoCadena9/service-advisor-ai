@@ -21,3 +21,9 @@ test('shows the unavailable demo environment state', async () => {
 
   expect(await screen.findByRole('status')).toHaveTextContent('Demo environment unavailable')
 })
+
+test('lets a visitor choose the Advisor role before entering the workspace', async () => {
+  render(<App />)
+
+  expect(await screen.findByRole('button', { name: 'Enter as Advisor' })).toBeVisible()
+})
