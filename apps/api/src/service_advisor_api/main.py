@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -13,6 +13,7 @@ from service_advisor_api.auth import (
     verify_demo_session,
 )
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
+from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
 
 
 class HealthResponse(BaseModel):
@@ -36,8 +37,31 @@ class WorkspaceResponse(BaseModel):
     generation: int
 
 
+class VehicleSearchResponse(BaseModel):
+    id: str
+    customer_label: str
+    vehicle_label: str
+    is_demo_data: bool
+
+
+class VehicleSummaryResponse(BaseModel):
+    id: str
+    customer_label: str
+    year: int
+    make: str
+    model: str
+    trim: str
+    engine: str
+    market: str
+    prior_mileage_km: int
+    prior_mileage_recorded_on: str
+    is_demo_data: bool
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
+vehicle_store = CanonicalVehicleStore()
+vehicle_store.seed()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -120,3 +144,22 @@ def list_demo_sessions(
         )
         for overlay in overlay_store.list_for_shop(claims.shop_id)
     ]
+
+
+@app.get("/vehicles/search", response_model=list[VehicleSearchResponse])
+def search_vehicles(
+    query: Annotated[str, Query(min_length=1)],
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> list[VehicleSearchResult]:
+    return vehicle_store.search(shop_id=claims.shop_id, query=query)
+
+
+@app.get("/vehicles/{vehicle_id}", response_model=VehicleSummaryResponse)
+def get_vehicle(
+    vehicle_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> VehicleSummaryResponse:
+    vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    return VehicleSummaryResponse.model_validate(vehicle, from_attributes=True)

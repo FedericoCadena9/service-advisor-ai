@@ -6,7 +6,7 @@ import {
 
 export async function enterDemoWorkspace(
   role: CreateDemoSessionRequest['role'],
-): Promise<WorkspaceResponse> {
+): Promise<{ token: string; workspace: WorkspaceResponse }> {
   const session = await createSessionDemoSessionsPost({ body: { role } })
 
   if (!('data' in session) || !session.data) {
@@ -21,5 +21,5 @@ export async function enterDemoWorkspace(
     throw new Error('Protected workspace could not be loaded')
   }
 
-  return workspace.data
+  return { token: session.data.token, workspace: workspace.data }
 }

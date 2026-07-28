@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 
 import { enterDemoWorkspace } from './api/demo-session'
-import type { CreateDemoSessionRequest, WorkspaceResponse } from './api/generated/types.gen'
+import type {
+  CreateDemoSessionRequest,
+  VehicleSearchResponse,
+  WorkspaceResponse,
+} from './api/generated/types.gen'
 import { fetchHealth } from './api/health'
+import { searchDemoVehicles } from './api/vehicles'
 
 type HealthState = 'loading' | 'healthy' | 'unavailable'
 
 export default function App() {
   const [state, setState] = useState<HealthState>('loading')
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null)
+  const [token, setToken] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [vehicles, setVehicles] = useState<VehicleSearchResponse[]>([])
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -28,9 +36,22 @@ export default function App() {
     setSessionError(null)
 
     try {
-      setWorkspace(await enterDemoWorkspace(role))
+      const session = await enterDemoWorkspace(role)
+      setToken(session.token)
+      setWorkspace(session.workspace)
     } catch {
       setSessionError('Demo session unavailable')
+    }
+  }
+
+  async function searchVehicles(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!token || !query.trim()) return
+
+    try {
+      setVehicles(await searchDemoVehicles(token, query))
+    } catch {
+      setSessionError('Vehicle search unavailable')
     }
   }
 
@@ -51,6 +72,22 @@ export default function App() {
           <h2 id="workspace-heading">Protected demo workspace</h2>
           <p>{`Role: ${workspace.role}`}</p>
           <p>{`Shop: ${workspace.shop_id}`}</p>
+          <form onSubmit={searchVehicles} role="search">
+            <label htmlFor="vehicle-search">Search demo vehicle</label>
+            <input
+              id="vehicle-search"
+              name="vehicle-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <button type="submit">Search</button>
+          </form>
+          <ul aria-label="Vehicle search results">
+            {vehicles.map((vehicle) => (
+              <li key={vehicle.id}>{`${vehicle.vehicle_label} — Demo data`}</li>
+            ))}
+          </ul>
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

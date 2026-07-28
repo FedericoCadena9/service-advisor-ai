@@ -77,6 +77,78 @@ export type ValidationError = {
 };
 
 /**
+ * VehicleSearchResponse
+ */
+export type VehicleSearchResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Customer Label
+     */
+    customer_label: string;
+    /**
+     * Vehicle Label
+     */
+    vehicle_label: string;
+    /**
+     * Is Demo Data
+     */
+    is_demo_data: boolean;
+};
+
+/**
+ * VehicleSummaryResponse
+ */
+export type VehicleSummaryResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Customer Label
+     */
+    customer_label: string;
+    /**
+     * Year
+     */
+    year: number;
+    /**
+     * Make
+     */
+    make: string;
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Trim
+     */
+    trim: string;
+    /**
+     * Engine
+     */
+    engine: string;
+    /**
+     * Market
+     */
+    market: string;
+    /**
+     * Prior Mileage Km
+     */
+    prior_mileage_km: number;
+    /**
+     * Prior Mileage Recorded On
+     */
+    prior_mileage_recorded_on: string;
+    /**
+     * Is Demo Data
+     */
+    is_demo_data: boolean;
+};
+
+/**
  * WorkspaceResponse
  */
 export type WorkspaceResponse = {
@@ -232,6 +304,79 @@ export type ListDemoSessionsAdminDemoSessionsGetResponses = {
 };
 
 export type ListDemoSessionsAdminDemoSessionsGetResponse = ListDemoSessionsAdminDemoSessionsGetResponses[keyof ListDemoSessionsAdminDemoSessionsGetResponses];
+
+export type SearchVehiclesVehiclesSearchGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query: {
+        /**
+         * Query
+         */
+        query: string;
+    };
+    url: '/vehicles/search';
+};
+
+export type SearchVehiclesVehiclesSearchGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SearchVehiclesVehiclesSearchGetError = SearchVehiclesVehiclesSearchGetErrors[keyof SearchVehiclesVehiclesSearchGetErrors];
+
+export type SearchVehiclesVehiclesSearchGetResponses = {
+    /**
+     * Response Search Vehicles Vehicles Search Get
+     * Successful Response
+     */
+    200: Array<VehicleSearchResponse>;
+};
+
+export type SearchVehiclesVehiclesSearchGetResponse = SearchVehiclesVehiclesSearchGetResponses[keyof SearchVehiclesVehiclesSearchGetResponses];
+
+export type GetVehicleVehiclesVehicleIdGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Vehicle Id
+         */
+        vehicle_id: string;
+    };
+    query?: never;
+    url: '/vehicles/{vehicle_id}';
+};
+
+export type GetVehicleVehiclesVehicleIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetVehicleVehiclesVehicleIdGetError = GetVehicleVehiclesVehicleIdGetErrors[keyof GetVehicleVehiclesVehicleIdGetErrors];
+
+export type GetVehicleVehiclesVehicleIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: VehicleSummaryResponse;
+};
+
+export type GetVehicleVehiclesVehicleIdGetResponse = GetVehicleVehiclesVehicleIdGetResponses[keyof GetVehicleVehiclesVehicleIdGetResponses];
 
 export type ClientOptions = {
     baseUrl: 'http://127.0.0.1:8000' | (string & {});
