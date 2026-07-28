@@ -24,6 +24,7 @@ from service_advisor_api.overlays import DemoOverlay, OverlayStore
 from service_advisor_api.recommendations import evaluate_civic_maintenance
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
+from service_advisor_api.workflows import AdvisorRun, AdvisorWorkflowStore
 
 
 class HealthResponse(BaseModel):
@@ -106,6 +107,17 @@ class RecommendationResponse(BaseModel):
     declined_service_ids: list[str]
 
 
+class AdvisorRunResponse(BaseModel):
+    id: str
+    events: list[str]
+    decision: str | None
+    command_executed: bool
+
+
+class AdvisorDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
@@ -114,6 +126,7 @@ checkin_store = CheckinStore()
 knowledge_pack = KnowledgePack()
 service_history_store = CivicServiceHistoryStore()
 service_history_store.seed()
+workflow_store = AdvisorWorkflowStore()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -323,3 +336,26 @@ def get_recommendation(
         warnings=list(recommendation.warnings),
         declined_service_ids=list(recommendation.declined_service_ids),
     )
+
+
+def _run_response(run: AdvisorRun) -> AdvisorRunResponse:
+    return AdvisorRunResponse(id=run.id, events=list(run.events), decision=run.decision, command_executed=run.command_executed)
+
+
+@app.post("/advisor-runs", response_model=AdvisorRunResponse, status_code=status.HTTP_201_CREATED)
+def start_advisor_run(claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
+    return _run_response(workflow_store.start(claims.shop_id, claims.demo_session_id))
+
+
+@app.get("/advisor-runs/{run_id}", response_model=AdvisorRunResponse)
+def resume_advisor_run(run_id: str, claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
+    try:
+        return _run_response(workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id))
+    except (KeyError, PermissionError) as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Advisor run not found") from error
+
+
+@app.post("/advisor-runs/{run_id}/decision", response_model=AdvisorRunResponse)
+def decide_advisor_run(run_id: str, request: AdvisorDecisionRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
+    workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id)
+    return _run_response(workflow_store.decide(run_id, request.decision))
