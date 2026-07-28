@@ -9,6 +9,7 @@ import type {
 } from './api/generated/types.gen'
 import { fetchHealth } from './api/health'
 import { searchDemoVehicles } from './api/vehicles'
+import { RecommendationConsole } from './components/advisor/RecommendationConsole'
 
 type HealthState = 'loading' | 'healthy' | 'unavailable'
 
@@ -169,6 +170,7 @@ export default function App() {
             <button type="submit">Confirm check-in</button>
           </form>
           {checkinSaved && <p role="status">Check-in confirmed</p>}
+          <RecommendationConsole />
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

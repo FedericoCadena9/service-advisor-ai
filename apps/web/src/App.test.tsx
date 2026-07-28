@@ -55,3 +55,10 @@ test('renders labeled check-in controls for an Advisor workspace', async () => {
   expect(screen.getByLabelText('Severe use factors')).toBeVisible()
   expect(screen.getByLabelText('Consent to prepare a message')).toBeVisible()
 })
+
+test('shows the grounded recommendation console in an Advisor workspace', async () => {
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Enter as Advisor' }))
+
+  expect(await screen.findByText('Grounded maintenance recommendation')).toBeVisible()
+})
