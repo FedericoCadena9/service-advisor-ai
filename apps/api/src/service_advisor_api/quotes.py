@@ -276,7 +276,9 @@ def _price_service(
         )
 
     for requirement in service.parts:
-        reason = _part_blocker(requirement, parts.get(requirement.part_number))
+        reason = _part_blocker(
+            requirement, parts.get(requirement.part_number), charged_parts
+        )
         if reason is not None:
             return _unavailable_line(service, "confirmed", reason)
 
@@ -313,11 +315,22 @@ def _price_service(
     )
 
 
-def _part_blocker(requirement: PartRequirement, availability: PartAvailability | None) -> str | None:
+def _part_blocker(
+    requirement: PartRequirement,
+    availability: PartAvailability | None,
+    reserved: Mapping[str, int],
+) -> str | None:
     if availability is None:
         return f"Part {requirement.part_number} is not carried by this shop"
-    if availability.on_hand >= requirement.quantity:
+    # A shared consumable is fitted once, so stock must cover the bundle's largest need.
+    needed = max(requirement.quantity, reserved.get(requirement.part_number, 0))
+    if availability.on_hand >= needed:
         return None
+    if availability.on_hand > 0 and availability.restock_eta is None:
+        return (
+            f"Part {requirement.part_number} has {availability.on_hand} of {needed} "
+            "required in stock"
+        )
     if availability.restock_eta is not None:
         return (
             f"Part {requirement.part_number} is {availability.restock_status} "

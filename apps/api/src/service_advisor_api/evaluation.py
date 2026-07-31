@@ -94,6 +94,7 @@ class CaseResult:
 @dataclass(frozen=True)
 class SuiteReport:
     results: tuple[CaseResult, ...]
+    attacks_exercised: int
     scores: dict[str, float]
     thresholds_met: bool
     kinds: dict[str, int]
@@ -187,8 +188,18 @@ def run_suite(
     kinds: dict[str, int] = {}
     for result in results:
         kinds[result.kind] = kinds.get(result.kind, 0) + 1
+    archetypes = {result.archetype for result in results}
+    exercised = sum(
+        len(attacks)
+        for archetype, attacks in (
+            ("unsafe_sql", UNSAFE_SQL_ATTACKS),
+            ("prompt_injection", PROMPT_INJECTIONS),
+        )
+        if archetype in archetypes
+    )
     return SuiteReport(
         results=results,
+        attacks_exercised=exercised,
         scores=scores,
         thresholds_met=all(
             scores.get(name, 0.0) >= threshold for name, threshold in THRESHOLDS.items()
@@ -196,7 +207,7 @@ def run_suite(
         kinds=kinds,
         dataset_version=DATASET_VERSION,
         prompt_version=PROMPT_VERSION,
-        provider=provider,
+        provider=_provider_label(provider, kinds),
         rule_versions=tuple(
             sorted(
                 configuration.rule.version for configuration in KnowledgePack().configurations()
@@ -322,26 +333,49 @@ def _grade_unavailable_part(case: EvaluationCase) -> CaseResult:
 
 
 def _grade_unsafe_sql(case: EvaluationCase) -> CaseResult:
-    attack = UNSAFE_SQL_ATTACKS[hash_index(case.id, len(UNSAFE_SQL_ATTACKS))]
+    """Every recorded attack runs in every case: none may sit in the list unexercised."""
+    accepted = [attack for attack in UNSAFE_SQL_ATTACKS if _is_accepted(attack)]
+    if accepted:
+        return CaseResult(case.id, case.archetype, "deterministic", False, f"accepted {accepted[0]}")
+    return CaseResult(
+        case.id, case.archetype, "deterministic", True, f"blocked {len(UNSAFE_SQL_ATTACKS)}"
+    )
+
+
+def _is_accepted(attack: str) -> bool:
     try:
         validate_sql(attack)
     except UnsafeSqlError:
-        return CaseResult(case.id, case.archetype, "deterministic", True, "blocked")
-    return CaseResult(case.id, case.archetype, "deterministic", False, f"accepted {attack}")
+        return False
+    return True
 
 
 def _grade_prompt_injection(case: EvaluationCase) -> CaseResult:
-    document = PROMPT_INJECTIONS[hash_index(case.id, len(PROMPT_INJECTIONS))]
+    ingested = [document for document in PROMPT_INJECTIONS if _is_ingested(document)]
+    if ingested:
+        return CaseResult(
+            case.id, case.archetype, "deterministic", False, f"ingested {ingested[0]}"
+        )
+    return CaseResult(
+        case.id, case.archetype, "deterministic", True, f"quarantined {len(PROMPT_INJECTIONS)}"
+    )
+
+
+def _is_ingested(document: str) -> bool:
     try:
         KnowledgePack().ingest(document)
     except QuarantinedSourceError:
-        return CaseResult(case.id, case.archetype, "deterministic", True, "quarantined")
-    return CaseResult(case.id, case.archetype, "deterministic", False, f"ingested {document}")
+        return False
+    return True
 
 
-def hash_index(value: str, modulo: int) -> int:
-    """A stable index that does not depend on the interpreter hash seed."""
-    return sum(value.encode()) % modulo
+def _provider_label(provider: str, kinds: dict[str, int]) -> str:
+    """The label follows the results that actually ran, so a live run can't read as deterministic."""
+    if kinds.get("live_model"):
+        return provider if provider != "deterministic" else "live_model"
+    if kinds.get("recorded_smoke") and provider == "deterministic":
+        return "recorded_smoke"
+    return provider
 
 
 def _score(results: Sequence[CaseResult], archetype: str | None) -> float:

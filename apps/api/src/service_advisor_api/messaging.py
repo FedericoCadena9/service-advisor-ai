@@ -11,7 +11,11 @@ from service_advisor_api.appointments import APPOINTMENT_NAMESPACE
 SEGMENT_LENGTH = 160
 MAX_SEGMENTS = 3
 MAX_PRIORITIES = 3
-FORBIDDEN_URGENCY = ("urgente", "peligro", "inseguro", "falla grave")
+CONFIRMATION = "¿Confirma la cita?"
+# Everything an edited message may say beyond the approved facts and service labels.
+CONNECTIVE_VOCABULARY = frozenset(
+    {"su", "servicio", "incluye", "y", "e", "total", "cita", "gracias", "por", "favor"}
+)
 SERVICE_LABELS = {
     "HONDA-A1": "cambio de aceite y filtro",
     "HONDA-TIRE-ROTATION": "rotacion de llantas",
@@ -19,9 +23,7 @@ SERVICE_LABELS = {
     "HONDA-BRAKE-PADS-FRONT": "balatas delanteras",
     "HONDA-TURBO-COOLANT": "refrigerante turbo",
 }
-_AMOUNT = re.compile(r"\$?\s?([\d,]+\.\d{2})")
-_SERVICE_TOKEN = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b")
-_SLOT_TOKEN = re.compile(r"\bbay-[a-z0-9-]+\b")
+_WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 
 
 class InventedContentError(ValueError):
@@ -83,30 +85,46 @@ def validate_sms(
     total_mxn: Decimal,
     slot_label: str,
 ) -> int:
-    """Reject edited text that invents recipient, price, service, slot, or urgency."""
+    """Accept only wording the approved quote supports.
+
+    The check is an allowlist, not a denylist: the message must open with the approved
+    recipient, state the approved total and slot, ask for confirmation, and use no words
+    beyond the approved service labels and a small connective vocabulary. Anything invented
+    -- a second recipient, a price in words, an unquoted service, urgency -- has no way in.
+    """
     segments = _segments(text)
     if segments > MAX_SEGMENTS:
         raise MessageTooLongError(f"Message uses {segments} segments; the limit is {MAX_SEGMENTS}")
-    if not text.startswith(f"Hola {customer_label}"):
+
+    total = f"${total_mxn:,.2f} MXN con IVA incluido."
+    opening = f"Hola {customer_label}:"
+    if not text.startswith(opening):
         raise InventedContentError("Message must address the approved recipient")
-    for amount in _AMOUNT.findall(text):
-        if Decimal(amount.replace(",", "")) != total_mxn:
-            raise InventedContentError("Message states a price the approved quote does not contain")
-    for token in _SERVICE_TOKEN.findall(text):
-        if token not in service_codes:
-            raise InventedContentError("Message names a service the approved quote does not contain")
-    if slot_label not in text:
+    if total not in text:
+        raise InventedContentError("Message states a price the approved quote does not contain")
+    if f"Cita {slot_label}." not in text:
         raise InventedContentError("Message must state the approved appointment slot")
-    for slot in _SLOT_TOKEN.findall(text):
-        if slot != slot_label:
-            raise InventedContentError("Message names a slot the approved quote does not contain")
-    labels = [label for label in SERVICE_LABELS.values() if label in text.lower()]
-    if len(labels) > MAX_PRIORITIES:
-        raise InventedContentError(f"Message lists more than {MAX_PRIORITIES} priorities")
-    if any(word in text.lower() for word in FORBIDDEN_URGENCY):
-        raise InventedContentError("Message invents urgency the recommendation does not support")
-    if "¿confirma" not in text.lower():
+    if CONFIRMATION not in text:
         raise InventedContentError("Message must ask the customer to confirm")
+
+    allowed_labels = [
+        SERVICE_LABELS.get(service_code, service_code.lower()) for service_code in service_codes
+    ]
+    remainder = text
+    for fixed in (opening, total, f"Cita {slot_label}.", CONFIRMATION):
+        remainder = remainder.replace(fixed, " ", 1)
+    for label in allowed_labels:
+        remainder = remainder.replace(label, " ")
+
+    quoted_priorities = sum(1 for label in allowed_labels if label in text)
+    if quoted_priorities > MAX_PRIORITIES:
+        raise InventedContentError(f"Message lists more than {MAX_PRIORITIES} priorities")
+
+    for word in _WORD.findall(remainder.lower()):
+        if word not in CONNECTIVE_VOCABULARY:
+            raise InventedContentError(
+                f"Message says {word!r}, which the approved quote does not support"
+            )
     return segments
 
 

@@ -1,0 +1,288 @@
+"""Adversarial regressions: every case here was a working bypass before the fix."""
+
+from datetime import UTC, datetime
+from decimal import Decimal
+
+import pytest
+from test_approvals import CITATIONS, FACTS, NO_ESCALATION
+
+from service_advisor_api.approvals import (
+    QuoteCommandStore,
+    QuoteFacts,
+    StaleQuoteError,
+)
+from service_advisor_api.evaluation import UNSAFE_SQL_ATTACKS, build_corpus, run_suite
+from service_advisor_api.messaging import InventedContentError, compose_sms, validate_sms
+from service_advisor_api.observability import REDACTED, redact_attributes
+from service_advisor_api.operations import PartAvailability
+from service_advisor_api.quotes import draft_quote
+from service_advisor_api.text_to_sql import (
+    SemanticQueryGateway,
+    UnsafeSqlError,
+    validate_sql,
+)
+
+APPROVED_SMS = {
+    "customer_label": "Demo Customer",
+    "service_codes": ("HONDA-A1",),
+    "total_mxn": Decimal("1847.88"),
+    "slot_label": "2026-08-03T09:00:00",
+}
+
+
+# 1. Text-to-SQL
+
+
+@pytest.mark.parametrize(
+    "attack",
+    [
+        'SELECT "customer_name", "phone" FROM v_service_history, "base_customers"',
+        'SELECT "total_mxn" FROM v_service_history, "base_quotes"',
+        "SELECT service_code FROM v_service_history, base_customers",
+        "SELECT name FROM v_service_history, pragma_table_list",
+        'SELECT service_code FROM "v_service_history"',
+    ],
+    ids=["quoted-comma-join", "quoted-quotes-table", "bare-comma-join", "pragma-function", "quoted-view"],
+)
+def test_quoted_identifiers_and_comma_joins_are_blocked(attack: str) -> None:
+    """What if the attacker comma-joins a quoted base table instead of using JOIN?"""
+    with pytest.raises(UnsafeSqlError):
+        validate_sql(attack)
+
+
+def test_the_gateway_never_returns_another_tenants_rows() -> None:
+    gateway = SemanticQueryGateway()
+    gateway.seed()
+
+    with pytest.raises(UnsafeSqlError):
+        gateway.execute(
+            validate_sql("SELECT service_code FROM v_service_history"),
+            "demo-shop",
+        ) and validate_sql('SELECT "phone" FROM v_service_history, "base_customers"')
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT service_code FROM v_service_history LIMIT 0,5",
+        "SELECT service_code FROM v_service_history LIMIT 5 OFFSET 2",
+    ],
+    ids=["comma-limit", "offset-limit"],
+)
+def test_limit_variants_are_handled_without_a_broken_query(sql: str) -> None:
+    """What if the caller writes LIMIT 0,5 instead of LIMIT 5?"""
+    accepted = validate_sql(sql)
+
+    assert accepted.row_limit <= 100
+    assert accepted.sql.count("LIMIT") == 1
+
+
+# 2. Messaging
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        (
+            "Hola Demo Customer: su servicio incluye cambio de aceite y filtro. "
+            "Total $5000 MXN. Cita 2026-08-03T09:00:00. ¿Confirma la cita?"
+        ),
+        "Hola Demo Customer: son doce mil pesos. Cita 2026-08-03T09:00:00. ¿Confirma la cita?",
+        (
+            "Hola Demo Customer y tambien Luis Ramirez: su servicio incluye cambio de aceite "
+            "y filtro. Total $1,847.88 MXN con IVA incluido. Cita 2026-08-03T09:00:00. "
+            "¿Confirma la cita?"
+        ),
+        (
+            "Hola Demo Customer: su servicio incluye transmision, suspension, clutch, bujias "
+            "y amortiguadores. Total $1,847.88 MXN con IVA incluido. "
+            "Cita 2026-08-03T09:00:00. ¿Confirma la cita?"
+        ),
+        (
+            "Hola Demo Customer: atienda de inmediato o puede quedarse tirado. "
+            "Total $1,847.88 MXN con IVA incluido. Cita 2026-08-03T09:00:00. ¿Confirma la cita?"
+        ),
+        (
+            "Hola Demo Customer: es URGENTÉ. Total $1,847.88 MXN con IVA incluido. "
+            "Cita 2026-08-03T09:00:00. ¿Confirma la cita?"
+        ),
+    ],
+    ids=["integer-price", "price-in-words", "extra-recipient", "invented-services", "urgency-prose", "accented-urgency"],
+)
+def test_invented_message_content_is_rejected(text: str) -> None:
+    """What if the Advisor writes prose instead of editing the approved preview?"""
+    with pytest.raises(InventedContentError):
+        validate_sms(text, **APPROVED_SMS)
+
+
+def test_the_approved_preview_and_a_shortened_edit_still_pass() -> None:
+    preview = compose_sms(**APPROVED_SMS)
+    shortened = (
+        "Hola Demo Customer: su servicio incluye cambio de aceite y filtro. "
+        "Total $1,847.88 MXN con IVA incluido. Cita 2026-08-03T09:00:00. ¿Confirma la cita?"
+    )
+
+    assert validate_sms(preview.text, **APPROVED_SMS) >= 1
+    assert validate_sms(shortened, **APPROVED_SMS) >= 1
+
+
+# 3 and 7. Approval lifecycle
+
+
+def _store_with_review(now: datetime | None = None) -> tuple[QuoteCommandStore, str]:
+    store = QuoteCommandStore()
+    review = store.open_review(
+        shop_id="demo-shop",
+        demo_session_id="session-1",
+        vehicle_id="honda-civic-2019-lx",
+        facts=FACTS,
+        citations=CITATIONS,
+        fingerprint="fingerprint-a",
+        now=now,
+    )
+    return store, review.id
+
+
+def _reject(store: QuoteCommandStore, review_id: str):
+    return store.reject(
+        review_id,
+        shop_id="demo-shop",
+        demo_session_id="session-1",
+        approver_role="advisor",
+        approver_session_id="session-1",
+        reason="Customer declined",
+    )
+
+
+def _approve(store: QuoteCommandStore, review_id: str, **overrides):
+    arguments = {
+        "shop_id": "demo-shop",
+        "demo_session_id": "session-1",
+        "approver_role": "advisor",
+        "approver_session_id": "session-1",
+        "idempotency_key": "key-1",
+        "current_facts": FACTS,
+        "current_fingerprint": "fingerprint-a",
+        "escalation": NO_ESCALATION,
+    }
+    return store.approve(review_id, **{**arguments, **overrides})
+
+
+def test_a_rejected_quote_cannot_be_resurrected_by_a_price_change() -> None:
+    """What if inventory moves after a rejection instead of before it?"""
+    store, review_id = _store_with_review()
+    _reject(store, review_id)
+
+    store.revalidate(review_id, FACTS, "fingerprint-b")
+
+    with pytest.raises(StaleQuoteError):
+        _approve(store, review_id, current_fingerprint="fingerprint-b")
+
+
+def test_an_invalidated_approval_can_still_be_rejected() -> None:
+    """What if the customer declines after the quote returned to review?"""
+    store, review_id = _store_with_review()
+    _approve(store, review_id)
+    store.revalidate(review_id, QuoteFacts(**FACTS.__dict__), "fingerprint-b")
+
+    rejection = _reject(store, review_id)
+
+    assert rejection.decision == "rejected"
+    assert rejection.quote_id is None
+
+
+def test_the_idempotency_key_decides_the_saved_quote() -> None:
+    """What if the same key is replayed after the quote was reopened and re-approved?"""
+    store, review_id = _store_with_review()
+    first = _approve(store, review_id, idempotency_key="key-1")
+
+    replay = _approve(store, review_id, idempotency_key="key-1")
+
+    assert replay.id == first.id
+
+
+def test_a_naive_expiry_clock_is_still_comparable() -> None:
+    """What if a caller passes a naive datetime instead of an aware one?"""
+    store, review_id = _store_with_review(now=datetime(2026, 7, 31, 12, 0))  # noqa: DTZ001
+
+    decision = _approve(store, review_id, now=datetime(2026, 7, 31, 13, 0, tzinfo=UTC))
+
+    assert decision.decision == "approved"
+
+
+# 4. Redaction
+
+
+def test_redaction_reaches_nested_structures() -> None:
+    """What if the personal data sits one dict deeper instead of at the top level?"""
+    payload = redact_attributes(
+        {
+            "nested": {"phone": "+52 55 1234 5678", "customer_name": "Ana Lopez"},
+            "history": [{"email": "ana@example.com"}, "call +52 55 0000 0000"],
+            "citation_page": 42,
+        }
+    )
+
+    rendered = str(payload)
+    assert "Ana Lopez" not in rendered
+    assert "+52 55 1234 5678" not in rendered
+    assert "ana@example.com" not in rendered
+    assert REDACTED in rendered
+    assert payload["citation_page"] == 42
+
+
+# 5. Parts consumption
+
+
+def test_a_shared_consumable_is_stocked_for_the_whole_bundle() -> None:
+    """What if the bundle needs six litres while only five are on hand?"""
+    draft = draft_quote(
+        ["FORD-SCHED-D", "FORD-SCHED-E"],
+        engine="2.3L",
+        parts={"FOR-OIL-5W30": PartAvailability("FOR-OIL-5W30", 5, "in_stock", None)},
+        slots=(),
+    )
+
+    assert all(not line.available for line in draft.lines)
+    assert draft.lines[0].unavailable_reason == (
+        "Part FOR-OIL-5W30 has 5 of 6 required in stock"
+    )
+    assert draft.total_mxn == Decimal("0.00")
+
+
+def test_a_shared_consumable_is_charged_once_and_reserved_once() -> None:
+    """What if both services fit the same oil change instead of two separate ones?"""
+    draft = draft_quote(
+        ["FORD-SCHED-D", "FORD-SCHED-E"],
+        engine="2.3L",
+        parts={"FOR-OIL-5W30": PartAvailability("FOR-OIL-5W30", 6, "in_stock", None)},
+        slots=(),
+    )
+
+    first, second = draft.lines
+    assert first.parts_mxn == Decimal("1308.00")
+    assert second.parts_mxn == Decimal("0.00")
+    assert second.labor_mxn == Decimal("0.00")
+    assert draft.duration_minutes == 50
+
+
+# 6. Evaluation honesty
+
+
+def test_every_recorded_attack_is_exercised() -> None:
+    """What if an attack sits in the list but no case ever runs it?"""
+    corpus = [case for case in build_corpus() if case.archetype == "unsafe_sql"]
+
+    report = run_suite(corpus)
+
+    assert report.scores["unsafe_sql"] == 1.0
+    assert report.attacks_exercised == len(UNSAFE_SQL_ATTACKS)
+
+
+def test_the_provider_label_matches_the_results_that_were_run() -> None:
+    """What if a live run is labelled deterministic instead of live?"""
+    corpus = build_corpus()
+
+    report = run_suite(corpus, live_model=lambda case: True, provider="deterministic")
+
+    assert report.provider == "live_model"

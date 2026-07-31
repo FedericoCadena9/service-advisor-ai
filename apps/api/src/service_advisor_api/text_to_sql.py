@@ -18,16 +18,17 @@ ALLOWED_FUNCTIONS = {"count", "sum", "avg", "min", "max", "round"}
 SQL_KEYWORDS = {
     "select", "from", "where", "group", "by", "order", "having", "limit", "as", "and", "or",
     "not", "in", "is", "null", "asc", "desc", "distinct", "on", "join", "inner", "left", "using",
+    "offset",
 }
 FORBIDDEN = re.compile(
     r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|replace|"
     r"truncate|grant|revoke|into|union|with)\b"
 )
 _IDENTIFIER = re.compile(r"\b[a-z_][a-z0-9_]*\b")
-_TABLE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*)")
+_TABLE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*(?:\s*,\s*[a-z_][a-z0-9_]*)*)")
 _FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
-_LIMIT = re.compile(r"\blimit\s+(\d+)\s*$")
-_NUMBER_OR_STRING = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(?:\.\d+)?\b")
+_LIMIT = re.compile(r"\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+\d+)?\s*$")
+_NUMBER_OR_STRING = re.compile(r"'[^']*'|\b\d+(?:\.\d+)?\b")
 
 
 class UnsafeSqlError(ValueError):
@@ -104,12 +105,20 @@ def validate_sql(sql: str) -> AcceptedQuery:
         raise UnsafeSqlError("Only a single SELECT statement is allowed")
     if FORBIDDEN.search(lowered):
         raise UnsafeSqlError("Only read-only projections over semantic views are allowed")
-    if "sqlite_" in lowered:
+    if '"' in normalized or "`" in normalized or "[" in normalized:
+        raise UnsafeSqlError("Quoted identifiers are not allowed")
+    if "sqlite_" in lowered or "pragma_" in lowered:
         raise UnsafeSqlError("System catalogs are not readable")
     if "shop_id" in lowered:
         raise UnsafeSqlError("Tenant filtering is applied by the gateway and cannot be restated")
 
-    views = tuple(dict.fromkeys(_TABLE.findall(lowered)))
+    views = tuple(
+        dict.fromkeys(
+            table.strip()
+            for clause in _TABLE.findall(lowered)
+            for table in clause.split(",")
+        )
+    )
     if not views:
         raise UnsafeSqlError("The query must read an allowlisted semantic view")
     unknown_views = [view for view in views if view not in ALLOWED_VIEWS]
@@ -127,7 +136,9 @@ def validate_sql(sql: str) -> AcceptedQuery:
     row_limit = ROW_LIMIT
     match = _LIMIT.search(lowered)
     if match is not None:
-        row_limit = min(int(match.group(1)), ROW_LIMIT)
+        # `LIMIT offset, count` means the second number is the row count.
+        requested = int(match.group(2) or match.group(1))
+        row_limit = min(requested, ROW_LIMIT)
         normalized = normalized[: match.start()].strip()
     return AcceptedQuery(
         sql=f"{normalized} LIMIT {row_limit}",
@@ -173,9 +184,12 @@ class SemanticQueryGateway:
 
     def execute(self, query: AcceptedQuery, shop_id: str) -> tuple[tuple[Any, ...], ...]:
         # Defence in depth: the principal re-checks the envelope it was handed.
-        for table in _TABLE.findall(query.sql.lower()):
-            if table not in ALLOWED_VIEWS:
-                raise UnsafeSqlError(f"{table} is not readable by {PRINCIPAL}")
+        if '"' in query.sql:
+            raise UnsafeSqlError(f"{PRINCIPAL} does not read quoted identifiers")
+        for clause in _TABLE.findall(query.sql.lower()):
+            for table in (name.strip() for name in clause.split(",")):
+                if table not in ALLOWED_VIEWS:
+                    raise UnsafeSqlError(f"{table} is not readable by {PRINCIPAL}")
         if not query.sql.lower().startswith("select "):
             raise UnsafeSqlError(f"{PRINCIPAL} may only read")
         deadline = time.monotonic() + query.timeout_seconds

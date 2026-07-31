@@ -100,7 +100,7 @@ class QuoteCommandStore:
         fingerprint: str,
         now: datetime | None = None,
     ) -> QuoteReview:
-        expires_at = (now or datetime.now(UTC)) + QUOTE_VALIDITY
+        expires_at = _as_utc(now or datetime.now(UTC)) + QUOTE_VALIDITY
         review = QuoteReview(
             id=str(uuid4()),
             shop_id=shop_id,
@@ -164,7 +164,10 @@ class QuoteCommandStore:
                     "An escalated quote requires a recorded reason"
                 )
 
+            replayed = self._idempotency.get((review_id, idempotency_key))
             existing = self._decision_for(review_id)
+            if replayed is not None and existing is not None and existing.id == replayed:
+                return existing
             if existing is not None and existing.fingerprint == review.fingerprint:
                 self._idempotency[(review_id, idempotency_key)] = existing.id
                 return existing
@@ -201,11 +204,15 @@ class QuoteCommandStore:
         with self._lock:
             review = self.get(review_id, shop_id=shop_id, demo_session_id=demo_session_id)
             existing = self._decision_for(review_id)
-            if existing is not None and existing.decision == "approved":
+            if (
+                existing is not None
+                and existing.decision == "approved"
+                and review.status == "approved"
+            ):
                 raise AlreadyDecidedError(
                     "The quote is already approved; invalidate or redraft it before rejecting"
                 )
-            if existing is not None:
+            if existing is not None and existing.decision == "rejected":
                 return existing
             decision = QuoteDecision(
                 id=str(uuid4()),
@@ -266,6 +273,9 @@ class QuoteCommandStore:
     def _invalidate(
         self, review: QuoteReview, current_facts: QuoteFacts, current_fingerprint: str
     ) -> None:
+        if review.status == "rejected":
+            # A rejection is final: changed inputs require a fresh draft, not a reopening.
+            return
         self._reviews[review.id] = replace(
             review,
             facts=current_facts,
@@ -278,5 +288,12 @@ class QuoteCommandStore:
         return self._reviews[decision.review_id].shop_id
 
 
+def _as_utc(moment: datetime) -> datetime:
+    """A naive clock is read as UTC so an expiry comparison can never raise."""
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
+
+
 def _has_expired(review: QuoteReview, now: datetime | None) -> bool:
-    return (now or datetime.now(UTC)) >= datetime.fromisoformat(review.expires_at)
+    return _as_utc(now or datetime.now(UTC)) >= _as_utc(
+        datetime.fromisoformat(review.expires_at)
+    )

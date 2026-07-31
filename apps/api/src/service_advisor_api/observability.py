@@ -53,12 +53,17 @@ class TraceVersions:
 
 
 def redact_value(value: object) -> object:
-    if not isinstance(value, str):
-        return value
-    redacted = value
-    for pattern in _PATTERNS:
-        redacted = pattern.sub(REDACTED, redacted)
-    return redacted
+    """Scrub a value at any depth: prohibited keys are dropped wherever they are nested."""
+    if isinstance(value, str):
+        redacted = value
+        for pattern in _PATTERNS:
+            redacted = pattern.sub(REDACTED, redacted)
+        return redacted
+    if isinstance(value, dict):
+        return redact_attributes(value)
+    if isinstance(value, list | tuple):
+        return [redact_value(item) for item in value]
+    return value
 
 
 def redact_attributes(attributes: dict[str, object]) -> dict[str, object]:
