@@ -207,6 +207,78 @@ export type HealthResponse = {
 };
 
 /**
+ * QuoteCitationsResponse
+ */
+export type QuoteCitationsResponse = {
+    /**
+     * Rule Version
+     */
+    rule_version: string | null;
+    /**
+     * Citation Page
+     */
+    citation_page: number | null;
+    /**
+     * Citation Section
+     */
+    citation_section: string | null;
+};
+
+/**
+ * QuoteDecisionRequest
+ */
+export type QuoteDecisionRequest = {
+    /**
+     * Decision
+     */
+    decision: 'approve' | 'reject';
+    /**
+     * Idempotency Key
+     */
+    idempotency_key: string;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+};
+
+/**
+ * QuoteDecisionResponse
+ */
+export type QuoteDecisionResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Review Id
+     */
+    review_id: string;
+    /**
+     * Quote Id
+     */
+    quote_id: string | null;
+    /**
+     * Decision
+     */
+    decision: string;
+    /**
+     * Approver Role
+     */
+    approver_role: string;
+    /**
+     * Approver Session Id
+     */
+    approver_session_id: string;
+    /**
+     * Reason
+     */
+    reason: string | null;
+    facts: QuoteFactsResponse;
+    citations: QuoteCitationsResponse;
+};
+
+/**
  * QuoteDraftRequest
  */
 export type QuoteDraftRequest = {
@@ -251,6 +323,36 @@ export type QuoteDraftResponse = {
 };
 
 /**
+ * QuoteFactsResponse
+ */
+export type QuoteFactsResponse = {
+    /**
+     * Service Codes
+     */
+    service_codes: Array<string>;
+    /**
+     * Subtotal Mxn
+     */
+    subtotal_mxn: string;
+    /**
+     * Iva Mxn
+     */
+    iva_mxn: string;
+    /**
+     * Total Mxn
+     */
+    total_mxn: string;
+    /**
+     * Duration Minutes
+     */
+    duration_minutes: number;
+    /**
+     * Bay Slot Id
+     */
+    bay_slot_id: string | null;
+};
+
+/**
  * QuoteLineResponse
  */
 export type QuoteLineResponse = {
@@ -290,6 +392,38 @@ export type QuoteLineResponse = {
      * Unavailable Reason
      */
     unavailable_reason: string | null;
+};
+
+/**
+ * QuoteReviewResponse
+ */
+export type QuoteReviewResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Vehicle Id
+     */
+    vehicle_id: string;
+    /**
+     * Approver Role
+     */
+    approver_role: 'advisor' | 'manager' | 'admin';
+    /**
+     * Approver Session Id
+     */
+    approver_session_id: string;
+    facts: QuoteFactsResponse;
+    citations: QuoteCitationsResponse;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Invalidation Reason
+     */
+    invalidation_reason: string | null;
 };
 
 /**
@@ -915,6 +1049,114 @@ export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponses = {
 };
 
 export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponse = CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponses[keyof CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponses];
+
+export type OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostData = {
+    body: QuoteDraftRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Vehicle Id
+         */
+        vehicle_id: string;
+    };
+    query?: never;
+    url: '/vehicles/{vehicle_id}/quote-reviews';
+};
+
+export type OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostError = OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostErrors[keyof OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostErrors];
+
+export type OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: QuoteReviewResponse;
+};
+
+export type OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostResponse = OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostResponses[keyof OpenQuoteReviewVehiclesVehicleIdQuoteReviewsPostResponses];
+
+export type GetQuoteReviewQuoteReviewsReviewIdGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Review Id
+         */
+        review_id: string;
+    };
+    query?: never;
+    url: '/quote-reviews/{review_id}';
+};
+
+export type GetQuoteReviewQuoteReviewsReviewIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetQuoteReviewQuoteReviewsReviewIdGetError = GetQuoteReviewQuoteReviewsReviewIdGetErrors[keyof GetQuoteReviewQuoteReviewsReviewIdGetErrors];
+
+export type GetQuoteReviewQuoteReviewsReviewIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: QuoteReviewResponse;
+};
+
+export type GetQuoteReviewQuoteReviewsReviewIdGetResponse = GetQuoteReviewQuoteReviewsReviewIdGetResponses[keyof GetQuoteReviewQuoteReviewsReviewIdGetResponses];
+
+export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostData = {
+    body: QuoteDecisionRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Review Id
+         */
+        review_id: string;
+    };
+    query?: never;
+    url: '/quote-reviews/{review_id}/decision';
+};
+
+export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostError = DecideQuoteReviewQuoteReviewsReviewIdDecisionPostErrors[keyof DecideQuoteReviewQuoteReviewsReviewIdDecisionPostErrors];
+
+export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: QuoteDecisionResponse;
+};
+
+export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponse = DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponses[keyof DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponses];
 
 export type StartAdvisorRunAdvisorRunsPostData = {
     body?: never;

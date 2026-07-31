@@ -41,6 +41,49 @@ function renderConsole(overrides: Partial<Parameters<typeof RecommendationConsol
       bay_slot_id: 'bay-1-morning',
       warnings: [],
     }),
+    onOpenReview: vi.fn().mockResolvedValue({
+      id: 'review-1',
+      vehicle_id: 'honda-civic-2019-lx',
+      approver_role: 'advisor',
+      approver_session_id: 'session-1',
+      facts: {
+        service_codes: ['HONDA-A1'],
+        subtotal_mxn: '1593.00',
+        iva_mxn: '254.88',
+        total_mxn: '1847.88',
+        duration_minutes: 50,
+        bay_slot_id: 'bay-1-morning',
+      },
+      citations: {
+        rule_version: 'honda-civic-2019-lx-v1',
+        citation_page: 42,
+        citation_section: 'Maintenance Minder',
+      },
+      status: 'in_review',
+      invalidation_reason: null,
+    }),
+    onDecideReview: vi.fn().mockResolvedValue({
+      id: 'decision-1',
+      review_id: 'review-1',
+      quote_id: 'quote-1',
+      decision: 'approved',
+      approver_role: 'advisor',
+      approver_session_id: 'session-1',
+      reason: null,
+      facts: {
+        service_codes: ['HONDA-A1'],
+        subtotal_mxn: '1593.00',
+        iva_mxn: '254.88',
+        total_mxn: '1847.88',
+        duration_minutes: 50,
+        bay_slot_id: 'bay-1-morning',
+      },
+      citations: {
+        rule_version: 'honda-civic-2019-lx-v1',
+        citation_page: 42,
+        citation_section: 'Maintenance Minder',
+      },
+    }),
     ...overrides,
   }
   render(<RecommendationConsole {...props} />)
@@ -77,6 +120,40 @@ test('shows priced quote lines with an explicit unavailable reason', async () =>
   expect(lines).toHaveTextContent('254.88')
   expect(lines).toHaveTextContent('Part HON-CABIN-80292 is backordered until 2026-08-14')
   expect(screen.getByText(/Subtotal 1593.00 \+ IVA 254.88 = 1847.88 MXN · 50 min · bay-1-morning/)).toBeVisible()
+})
+
+test('shows the approver, services, facts, and citations before approval', async () => {
+  renderConsole()
+  fireEvent.click(screen.getByRole('tab', { name: 'Approval' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open approval' }))
+
+  expect(await screen.findByText('advisor · session session-1')).toBeVisible()
+  expect(screen.getByText('HONDA-A1')).toBeVisible()
+  expect(screen.getByText('1847.88 MXN including IVA 254.88 · 50 min · bay-1-morning')).toBeVisible()
+  expect(screen.getByText('honda-civic-2019-lx-v1 · page 42, Maintenance Minder')).toBeVisible()
+})
+
+test('reports the saved quote after an approval command', async () => {
+  renderConsole()
+  fireEvent.click(screen.getByRole('tab', { name: 'Approval' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open approval' }))
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve quote' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Quote quote-1 approved by advisor')
+})
+
+test('returns an invalidated quote to review', async () => {
+  renderConsole({ onDecideReview: vi.fn().mockRejectedValue(new Error('stale')) })
+  fireEvent.click(screen.getByRole('tab', { name: 'Approval' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open approval' }))
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve quote' }))
+
+  expect(
+    await screen.findByText('Price, inventory, or slot inputs changed; the quote returned to review'),
+  ).toBeVisible()
 })
 
 test('answers a contextual question from grounded evidence', async () => {

@@ -13,6 +13,7 @@ import { fetchRecommendation } from './api/recommendations'
 import { askContextualChat } from './api/chat'
 import { decideAdvisorRun, fetchAdvisorRunEvents, startAdvisorRun } from './api/advisor-run'
 import { draftQuote } from './api/quotes'
+import { decideQuoteReview, openQuoteReview } from './api/quote-reviews'
 import { RecommendationConsole } from './components/advisor/RecommendationConsole'
 
 type HealthState = 'loading' | 'healthy' | 'unavailable'
@@ -177,7 +178,7 @@ export default function App() {
             <button type="submit">Confirm check-in</button>
           </form>
           {checkinSaved && <p role="status">Check-in confirmed</p>}
-          <RecommendationConsole recommendation={recommendation} onStartRun={async () => { if (!token) throw new Error('Session required'); const run = await startAdvisorRun(token); setAdvisorRunId(run.id); return { id: run.id, events: await fetchAdvisorRunEvents(token, run.id) } }} onApproveRun={async () => { if (!token || !advisorRunId) throw new Error('Run required'); await decideAdvisorRun(token, advisorRunId) }} onAsk={async (question) => { if (!token) throw new Error('Session required'); return (await askContextualChat(token, question)).text }} onDraftQuote={async (serviceCodes) => { if (!token) throw new Error('Session required'); return draftQuote(token, serviceCodes) }} />
+          <RecommendationConsole recommendation={recommendation} onStartRun={async () => { if (!token) throw new Error('Session required'); const run = await startAdvisorRun(token); setAdvisorRunId(run.id); return { id: run.id, events: await fetchAdvisorRunEvents(token, run.id) } }} onApproveRun={async () => { if (!token || !advisorRunId) throw new Error('Run required'); await decideAdvisorRun(token, advisorRunId) }} onAsk={async (question) => { if (!token) throw new Error('Session required'); return (await askContextualChat(token, question)).text }} onDraftQuote={async (serviceCodes) => { if (!token) throw new Error('Session required'); return draftQuote(token, serviceCodes) }} onOpenReview={async (serviceCodes) => { if (!token) throw new Error('Session required'); return openQuoteReview(token, serviceCodes) }} onDecideReview={async (reviewId, decision, reason) => { if (!token) throw new Error('Session required'); return decideQuoteReview(token, reviewId, decision, { idempotencyKey: reviewId, reason }) }} />
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

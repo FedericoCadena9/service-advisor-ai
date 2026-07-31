@@ -1,6 +1,8 @@
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from hashlib import sha256
 
 from service_advisor_api.operations import BaySlot, PartAvailability
 
@@ -164,6 +166,28 @@ def draft_quote(
         bay_slot_id=slot.id if slot else None,
         warnings=warnings,
     )
+
+
+def fingerprint(draft: QuoteDraft) -> str:
+    """Hash every volatile input an approval depends on: price, availability, and slot."""
+    volatile = {
+        "lines": [
+            {
+                "service_code": line.service_code,
+                "labor_mxn": str(line.labor_mxn),
+                "parts_mxn": str(line.parts_mxn),
+                "total_mxn": str(line.total_mxn),
+                "duration_minutes": line.duration_minutes,
+                "available": line.available,
+                "unavailable_reason": line.unavailable_reason,
+            }
+            for line in draft.lines
+        ],
+        "total_mxn": str(draft.total_mxn),
+        "duration_minutes": draft.duration_minutes,
+        "bay_slot_id": draft.bay_slot_id,
+    }
+    return sha256(json.dumps(volatile, sort_keys=True).encode()).hexdigest()
 
 
 def _price_service(

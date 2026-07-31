@@ -68,6 +68,33 @@ class OperationsStore:
             )
             self._connection.commit()
 
+    def set_part_on_hand(
+        self,
+        shop_id: str,
+        part_number: str,
+        on_hand: int,
+        *,
+        restock_status: str = "in_stock",
+        restock_eta: str | None = None,
+    ) -> None:
+        with self._lock:
+            self._connection.execute(
+                """
+                UPDATE parts_inventory SET on_hand = ?, restock_status = ?, restock_eta = ?
+                WHERE shop_id = ? AND part_number = ?
+                """,
+                (on_hand, restock_status, restock_eta, shop_id, part_number),
+            )
+            self._connection.commit()
+
+    def set_slot_capacity(self, shop_id: str, slot_id: str, capacity_minutes: int) -> None:
+        with self._lock:
+            self._connection.execute(
+                "UPDATE bay_slots SET capacity_minutes = ? WHERE shop_id = ? AND id = ?",
+                (capacity_minutes, shop_id, slot_id),
+            )
+            self._connection.commit()
+
     def part(self, shop_id: str, part_number: str) -> PartAvailability | None:
         with self._lock:
             row = self._connection.execute(

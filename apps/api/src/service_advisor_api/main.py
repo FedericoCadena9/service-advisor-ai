@@ -6,6 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from service_advisor_api.approvals import (
+    QuoteCitations,
+    QuoteCommandStore,
+    QuoteDecision,
+    QuoteFacts,
+    QuoteReview,
+    StaleQuoteError,
+)
 from service_advisor_api.auth import (
     ExpiredDemoSessionError,
     InvalidDemoSessionError,
@@ -31,6 +39,7 @@ from service_advisor_api.quotes import (
     QuoteDraft,
     UnknownServiceError,
     draft_quote,
+    fingerprint,
     required_part_numbers,
 )
 from service_advisor_api.recommendations import evaluate_civic_maintenance
@@ -174,6 +183,50 @@ class QuoteDraftResponse(BaseModel):
     warnings: list[str]
 
 
+class QuoteFactsResponse(BaseModel):
+    service_codes: list[str]
+    subtotal_mxn: Decimal
+    iva_mxn: Decimal
+    total_mxn: Decimal
+    duration_minutes: int
+    bay_slot_id: str | None
+
+
+class QuoteCitationsResponse(BaseModel):
+    rule_version: str | None
+    citation_page: int | None
+    citation_section: str | None
+
+
+class QuoteReviewResponse(BaseModel):
+    id: str
+    vehicle_id: str
+    approver_role: Role
+    approver_session_id: str
+    facts: QuoteFactsResponse
+    citations: QuoteCitationsResponse
+    status: str
+    invalidation_reason: str | None
+
+
+class QuoteDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    idempotency_key: str
+    reason: str | None = None
+
+
+class QuoteDecisionResponse(BaseModel):
+    id: str
+    review_id: str
+    quote_id: str | None
+    decision: str
+    approver_role: str
+    approver_session_id: str
+    reason: str | None
+    facts: QuoteFactsResponse
+    citations: QuoteCitationsResponse
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
@@ -185,6 +238,7 @@ service_history_store.seed()
 workflow_store = AdvisorWorkflowStore()
 operations_store = OperationsStore()
 operations_store.seed()
+quote_command_store = QuoteCommandStore()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -447,6 +501,177 @@ def create_quote_draft(
         bay_slot_id=draft.bay_slot_id,
         warnings=list(draft.warnings),
     )
+
+
+def _quote_context(
+    claims: SessionClaims, vehicle_id: str, service_codes: list[str]
+) -> tuple[QuoteFacts, QuoteCitations, str]:
+    """Recompute the volatile quote inputs an approval command depends on."""
+    vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    checkin = checkin_store.get(
+        shop_id=claims.shop_id,
+        demo_session_id=claims.demo_session_id,
+        vehicle_id=vehicle_id,
+    )
+    if checkin is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Confirm a check-in before reviewing a quote",
+        )
+    try:
+        draft = _build_quote_draft(claims.shop_id, vehicle.engine, service_codes)
+    except (UnknownServiceError, InformationalServiceError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    recommendation = evaluate_civic_maintenance(
+        checkin.current_mileage_km,
+        checkin.checked_in_on,
+        completed_services=service_history_store.completed(claims.shop_id, vehicle_id),
+        declined_services=service_history_store.declined(claims.shop_id, vehicle_id),
+    )
+    facts = QuoteFacts(
+        service_codes=tuple(service_codes),
+        subtotal_mxn=draft.subtotal_mxn,
+        iva_mxn=draft.iva_mxn,
+        total_mxn=draft.total_mxn,
+        duration_minutes=draft.duration_minutes,
+        bay_slot_id=draft.bay_slot_id,
+    )
+    citations = QuoteCitations(
+        rule_version=recommendation.rule_version,
+        citation_page=recommendation.citation_page,
+        citation_section=recommendation.citation_section,
+    )
+    return facts, citations, fingerprint(draft)
+
+
+def _facts_response(facts: QuoteFacts) -> QuoteFactsResponse:
+    return QuoteFactsResponse(
+        service_codes=list(facts.service_codes),
+        subtotal_mxn=facts.subtotal_mxn,
+        iva_mxn=facts.iva_mxn,
+        total_mxn=facts.total_mxn,
+        duration_minutes=facts.duration_minutes,
+        bay_slot_id=facts.bay_slot_id,
+    )
+
+
+def _review_response(review: QuoteReview, claims: SessionClaims) -> QuoteReviewResponse:
+    return QuoteReviewResponse(
+        id=review.id,
+        vehicle_id=review.vehicle_id,
+        approver_role=claims.role,
+        approver_session_id=claims.demo_session_id,
+        facts=_facts_response(review.facts),
+        citations=QuoteCitationsResponse(**review.citations.__dict__),
+        status=review.status,
+        invalidation_reason=review.invalidation_reason,
+    )
+
+
+def _decision_response(decision: QuoteDecision) -> QuoteDecisionResponse:
+    return QuoteDecisionResponse(
+        id=decision.id,
+        review_id=decision.review_id,
+        quote_id=decision.quote_id,
+        decision=decision.decision,
+        approver_role=decision.approver_role,
+        approver_session_id=decision.approver_session_id,
+        reason=decision.reason,
+        facts=_facts_response(decision.facts),
+        citations=QuoteCitationsResponse(**decision.citations.__dict__),
+    )
+
+
+def _load_review(review_id: str, claims: SessionClaims) -> QuoteReview:
+    try:
+        return quote_command_store.get(review_id, claims.shop_id, claims.demo_session_id)
+    except (KeyError, PermissionError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Quote review not found"
+        ) from error
+
+
+@app.post(
+    "/vehicles/{vehicle_id}/quote-reviews",
+    response_model=QuoteReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def open_quote_review(
+    vehicle_id: str,
+    request: QuoteDraftRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> QuoteReviewResponse:
+    facts, citations, current_fingerprint = _quote_context(claims, vehicle_id, request.service_codes)
+    review = quote_command_store.open_review(
+        shop_id=claims.shop_id,
+        demo_session_id=claims.demo_session_id,
+        vehicle_id=vehicle_id,
+        facts=facts,
+        citations=citations,
+        fingerprint=current_fingerprint,
+    )
+    return _review_response(review, claims)
+
+
+@app.get("/quote-reviews/{review_id}", response_model=QuoteReviewResponse)
+def get_quote_review(
+    review_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> QuoteReviewResponse:
+    review = _load_review(review_id, claims)
+    facts, _, current_fingerprint = _quote_context(
+        claims, review.vehicle_id, list(review.facts.service_codes)
+    )
+    return _review_response(
+        quote_command_store.revalidate(review.id, facts, current_fingerprint), claims
+    )
+
+
+@app.post("/quote-reviews/{review_id}/decision", response_model=QuoteDecisionResponse)
+def decide_quote_review(
+    review_id: str,
+    request: QuoteDecisionRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> QuoteDecisionResponse:
+    review = _load_review(review_id, claims)
+    if request.decision == "reject":
+        if not (request.reason or "").strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="A rejection reason is required",
+            )
+        return _decision_response(
+            quote_command_store.reject(
+                review.id,
+                shop_id=claims.shop_id,
+                demo_session_id=claims.demo_session_id,
+                approver_role=claims.role,
+                approver_session_id=claims.demo_session_id,
+                reason=request.reason or "",
+            )
+        )
+
+    facts, _, current_fingerprint = _quote_context(
+        claims, review.vehicle_id, list(review.facts.service_codes)
+    )
+    try:
+        decision = quote_command_store.approve(
+            review.id,
+            shop_id=claims.shop_id,
+            demo_session_id=claims.demo_session_id,
+            approver_role=claims.role,
+            approver_session_id=claims.demo_session_id,
+            idempotency_key=request.idempotency_key,
+            current_facts=facts,
+            current_fingerprint=current_fingerprint,
+        )
+    except StaleQuoteError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    return _decision_response(decision)
 
 
 def _run_response(run: AdvisorRun) -> AdvisorRunResponse:
