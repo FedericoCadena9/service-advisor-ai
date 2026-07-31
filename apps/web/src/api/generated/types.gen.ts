@@ -794,6 +794,10 @@ export type VehicleSummaryResponse = {
      */
     engine: string;
     /**
+     * Drivetrain
+     */
+    drivetrain: string;
+    /**
      * Market
      */
     market: string;

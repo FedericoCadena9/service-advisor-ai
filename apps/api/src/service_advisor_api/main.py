@@ -58,7 +58,11 @@ from service_advisor_api.quotes import (
     fingerprint,
     required_part_numbers,
 )
-from service_advisor_api.recommendations import evaluate_civic_maintenance
+from service_advisor_api.recommendations import (
+    Recommendation,
+    evaluate_civic_maintenance,
+    evaluate_maintenance,
+)
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.text_to_sql import (
     QueryTimeoutError,
@@ -66,7 +70,11 @@ from service_advisor_api.text_to_sql import (
     UnsafeSqlError,
     UnsupportedQuestionError,
 )
-from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
+from service_advisor_api.vehicles import (
+    CanonicalVehicle,
+    CanonicalVehicleStore,
+    VehicleSearchResult,
+)
 from service_advisor_api.voice import (
     ConsentRequiredError,
     Language,
@@ -118,6 +126,7 @@ class VehicleSummaryResponse(BaseModel):
     model: str
     trim: str
     engine: str
+    drivetrain: str
     market: str
     prior_mileage_km: int
     prior_mileage_recorded_on: str
@@ -567,15 +576,35 @@ def get_checkin(
     return _checkin_response(checkin)
 
 
+def _evaluate_for_vehicle(
+    claims: SessionClaims, vehicle: CanonicalVehicle, current_mileage_km: int, checked_in_on: str
+) -> Recommendation:
+    """Retrieve evidence for this exact configuration and market, never a neighbouring one."""
+    return evaluate_maintenance(
+        current_mileage_km,
+        checked_in_on,
+        make=vehicle.make,
+        model=vehicle.model,
+        engine=vehicle.engine,
+        drivetrain=vehicle.drivetrain,
+        market=vehicle.market,
+        completed_services=service_history_store.completed(claims.shop_id, vehicle.id),
+        declined_services=service_history_store.declined(claims.shop_id, vehicle.id),
+    )
+
+
 @app.get("/vehicles/{vehicle_id}/recommendation", response_model=RecommendationResponse)
 def get_recommendation(
     vehicle_id: str,
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> RecommendationResponse:
+    vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
     checkin = checkin_store.get(shop_id=claims.shop_id, demo_session_id=claims.demo_session_id, vehicle_id=vehicle_id)
     if checkin is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Confirm a check-in before requesting recommendations")
-    recommendation = evaluate_civic_maintenance(checkin.current_mileage_km, checkin.checked_in_on, completed_services=service_history_store.completed(claims.shop_id, vehicle_id), declined_services=service_history_store.declined(claims.shop_id, vehicle_id))
+    recommendation = _evaluate_for_vehicle(claims, vehicle, checkin.current_mileage_km, checkin.checked_in_on)
     return RecommendationResponse(
         state=recommendation.state,
         actionable=recommendation.actionable,
@@ -674,11 +703,8 @@ def _quote_context(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
         ) from error
-    recommendation = evaluate_civic_maintenance(
-        checkin.current_mileage_km,
-        checkin.checked_in_on,
-        completed_services=service_history_store.completed(claims.shop_id, vehicle_id),
-        declined_services=service_history_store.declined(claims.shop_id, vehicle_id),
+    recommendation = _evaluate_for_vehicle(
+        claims, vehicle, checkin.current_mileage_km, checkin.checked_in_on
     )
     facts = QuoteFacts(
         service_codes=tuple(service_codes),

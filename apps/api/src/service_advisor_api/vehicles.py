@@ -20,6 +20,7 @@ class CanonicalVehicle:
     model: str
     trim: str
     engine: str
+    drivetrain: str
     market: str
     prior_mileage_km: int
     prior_mileage_recorded_on: str
@@ -47,6 +48,7 @@ class CanonicalVehicleStore:
                 model TEXT NOT NULL,
                 trim TEXT NOT NULL,
                 engine TEXT NOT NULL,
+                drivetrain TEXT NOT NULL,
                 market TEXT NOT NULL,
                 prior_mileage_km INTEGER NOT NULL,
                 prior_mileage_recorded_on TEXT NOT NULL,
@@ -56,15 +58,26 @@ class CanonicalVehicleStore:
             """
         )
 
+    SEED_ROWS: tuple[tuple[object, ...], ...] = (
+        (
+            "demo-shop", "honda-civic-2019-lx", "Demo Customer", 2019,
+            "Honda", "Civic", "LX", "2.0L", "FWD", "Mexico", 42500, "2026-06-15", 1,
+        ),
+        (
+            "demo-shop", "honda-crv-2021-ex", "Demo Fleet", 2021,
+            "Honda", "CR-V", "EX", "1.5T", "AWD", "Mexico", 38200, "2026-06-20", 1,
+        ),
+        (
+            "demo-shop", "honda-accord-2020-sport", "Demo Fleet", 2020,
+            "Honda", "Accord", "Sport", "1.5T", "FWD", "Mexico", 30400, "2026-06-22", 1,
+        ),
+    )
+
     def seed(self) -> None:
         with self._lock:
-            self._connection.execute(
-                """
-                INSERT OR IGNORE INTO canonical_vehicles VALUES (
-                    'demo-shop', 'honda-civic-2019-lx', 'Demo Customer', 2019,
-                    'Honda', 'Civic', 'LX', '2.0L', 'Mexico', 42500, '2026-06-15', 1
-                )
-                """
+            self._connection.executemany(
+                "INSERT OR IGNORE INTO canonical_vehicles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                self.SEED_ROWS,
             )
             self._connection.commit()
 
@@ -96,7 +109,7 @@ class CanonicalVehicleStore:
         with self._lock:
             row = self._connection.execute(
                 """
-                SELECT id, customer_label, year, make, model, trim, engine, market,
+                SELECT id, customer_label, year, make, model, trim, engine, drivetrain, market,
                        prior_mileage_km, prior_mileage_recorded_on, is_demo_data
                 FROM canonical_vehicles WHERE shop_id = ? AND id = ?
                 """,
