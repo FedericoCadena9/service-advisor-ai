@@ -1,10 +1,15 @@
-import re
 import sqlite3
 import time
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any
 
+import sqlglot
+from sqlglot import exp
+from sqlglot.errors import ParseError
+
+DIALECT = "sqlite"
+TENANT_COLUMN = "shop_id"
 ROW_LIMIT = 100
 TIMEOUT_SECONDS = 2.0
 PRINCIPAL = "semantic_reader"
@@ -15,21 +20,8 @@ ALLOWED_VIEWS = {
     "v_quote_totals": ("quote_id", "vehicle_id", "total_mxn", "approver_role"),
 }
 ALLOWED_FUNCTIONS = {"count", "sum", "avg", "min", "max", "round"}
-SQL_KEYWORDS = {
-    "select", "from", "where", "group", "by", "order", "having", "limit", "as", "and", "or",
-    "not", "in", "is", "null", "asc", "desc", "distinct", "on", "join", "inner", "left", "using",
-    "offset",
-}
-FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|replace|"
-    r"truncate|grant|revoke|into|union|with)\b"
-)
-_IDENTIFIER = re.compile(r"\b[a-z_][a-z0-9_]*\b")
-_TABLE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*(?:\s*,\s*[a-z_][a-z0-9_]*)*)")
-_SUBQUERY_SOURCE = re.compile(r"\b(?:from|join)\s*[(,]|,\s*\(")
-_FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
-_LIMIT = re.compile(r"\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+(\d+))?\s*$")
-_NUMBER_OR_STRING = re.compile(r"'[^']*'|\b\d+(?:\.\d+)?\b")
+# A derived table hides its source behind a projection, so the FROM list must name views.
+_DERIVED_SOURCES = (exp.Subquery, exp.Union, exp.Lateral)
 
 
 class UnsafeSqlError(ValueError):
@@ -99,59 +91,39 @@ def generate_sql(question: str) -> tuple[str, str]:
 
 
 def validate_sql(sql: str) -> AcceptedQuery:
-    """Accept one read-only SELECT over allowlisted semantic views, with a forced row limit."""
-    normalized = " ".join(sql.split()).rstrip(";").strip()
-    lowered = normalized.lower()
-    if "--" in normalized or "/*" in normalized:
+    """Accept one read-only SELECT over allowlisted semantic views, with a forced row limit.
+
+    The statement is parsed, inspected as a tree, and re-rendered from that tree. Reading
+    structure rather than text is what makes a disguise -- a comma join, a quoted
+    identifier, a nested subquery, an alias -- indistinguishable from the plain form.
+    """
+    if "--" in sql or "/*" in sql:
         raise UnsafeSqlError("SQL comments are not allowed")
-    if ";" in normalized:
+    try:
+        statements = [statement for statement in sqlglot.parse(sql, read=DIALECT) if statement]
+    except ParseError as error:
+        raise UnsafeSqlError(f"The query could not be parsed: {error}") from error
+    if len(statements) != 1:
         raise UnsafeSqlError("Only a single statement is allowed")
-    if not lowered.startswith("select "):
+
+    statement = statements[0]
+    if not isinstance(statement, exp.Select):
         raise UnsafeSqlError("Only a single SELECT statement is allowed")
-    if FORBIDDEN.search(lowered):
-        raise UnsafeSqlError("Only read-only projections over semantic views are allowed")
-    if '"' in normalized or "`" in normalized or "[" in normalized:
-        raise UnsafeSqlError("Quoted identifiers are not allowed")
-    if _SUBQUERY_SOURCE.search(lowered):
+    if statement.args.get("with"):
+        raise UnsafeSqlError("Common table expressions are not allowed")
+    if any(next(statement.find_all(node_type), None) for node_type in _DERIVED_SOURCES):
         raise UnsafeSqlError("Only allowlisted semantic views may be read")
-    if "sqlite_" in lowered or "pragma_" in lowered:
-        raise UnsafeSqlError("System catalogs are not readable")
-    if "shop_id" in lowered:
-        raise UnsafeSqlError("Tenant filtering is applied by the gateway and cannot be restated")
 
-    views = tuple(
-        dict.fromkeys(
-            table.strip()
-            for clause in _TABLE.findall(lowered)
-            for table in clause.split(",")
-        )
-    )
-    if not views:
-        raise UnsafeSqlError("The query must read an allowlisted semantic view")
-    unknown_views = [view for view in views if view not in ALLOWED_VIEWS]
-    if unknown_views:
-        raise UnsafeSqlError(f"{unknown_views[0]} is not an allowlisted semantic view")
+    views = _referenced_views(statement)
+    columns = _referenced_columns(statement, views)
+    _reject_unsafe_functions(statement)
 
-    functions = {name for name in _FUNCTION.findall(lowered)} - set(ALLOWED_VIEWS)
-    unsafe_functions = functions - ALLOWED_FUNCTIONS
-    if unsafe_functions:
-        raise UnsafeSqlError(f"{min(unsafe_functions)} is not an allowlisted function")
-
-    allowed_columns = {column for view in views for column in ALLOWED_VIEWS[view]}
-    columns = _referenced_columns(lowered, views, allowed_columns)
-
-    row_limit = ROW_LIMIT
-    match = _LIMIT.search(lowered)
-    offset = 0
-    if match is not None:
-        # `LIMIT offset, count` means the second number is the row count.
-        requested = int(match.group(2) or match.group(1))
-        row_limit = min(requested, ROW_LIMIT)
-        offset = int(match.group(1)) if match.group(2) else int(match.group(3) or 0)
-        normalized = normalized[: match.start()].strip()
-    limit_clause = f"LIMIT {row_limit}" + (f" OFFSET {offset}" if offset else "")
+    row_limit, offset = _row_window(statement)
+    statement.set("limit", exp.Limit(expression=exp.Literal.number(row_limit)))
+    if offset:
+        statement.set("offset", exp.Offset(expression=exp.Literal.number(offset)))
     return AcceptedQuery(
-        sql=f"{normalized} {limit_clause}",
+        sql=statement.sql(dialect=DIALECT),
         views=views,
         columns=columns,
         row_limit=row_limit,
@@ -160,19 +132,54 @@ def validate_sql(sql: str) -> AcceptedQuery:
     )
 
 
-def _referenced_columns(
-    lowered: str, views: tuple[str, ...], allowed_columns: set[str]
-) -> tuple[str, ...]:
-    stripped = _NUMBER_OR_STRING.sub(" ", lowered)
+def _referenced_views(statement: exp.Select) -> tuple[str, ...]:
+    """Every table the statement reads, however it was written."""
+    views: list[str] = []
+    for table in statement.find_all(exp.Table):
+        if table.db or table.catalog:
+            raise UnsafeSqlError("Schema-qualified tables are not readable")
+        name = table.name.lower()
+        if name not in ALLOWED_VIEWS:
+            raise UnsafeSqlError(f"{name} is not an allowlisted semantic view")
+        if name not in views:
+            views.append(name)
+    if not views:
+        raise UnsafeSqlError("The query must read an allowlisted semantic view")
+    return tuple(views)
+
+
+def _referenced_columns(statement: exp.Select, views: tuple[str, ...]) -> tuple[str, ...]:
+    allowed = {column for view in views for column in ALLOWED_VIEWS[view]}
     referenced: list[str] = []
-    for identifier in _IDENTIFIER.findall(stripped):
-        if identifier in SQL_KEYWORDS or identifier in views or identifier in ALLOWED_FUNCTIONS:
-            continue
-        if identifier not in allowed_columns:
-            raise UnsafeSqlError(f"{identifier} is not an allowlisted column")
-        if identifier not in referenced:
-            referenced.append(identifier)
+    for column in statement.find_all(exp.Column):
+        name = column.name.lower()
+        if name == TENANT_COLUMN:
+            raise UnsafeSqlError(
+                "Tenant filtering is applied by the gateway and cannot be restated"
+            )
+        if name not in allowed:
+            raise UnsafeSqlError(f"{name} is not an allowlisted column")
+        if name not in referenced:
+            referenced.append(name)
     return tuple(referenced)
+
+
+def _reject_unsafe_functions(statement: exp.Select) -> None:
+    for function in statement.find_all(exp.Func):
+        name = (
+            function.this if isinstance(function, exp.Anonymous) else function.sql_name()
+        )
+        if str(name).lower() not in ALLOWED_FUNCTIONS:
+            raise UnsafeSqlError(f"{str(name).lower()} is not an allowlisted function")
+
+
+def _row_window(statement: exp.Select) -> tuple[int, int]:
+    """Read the caller's window, capping the count and keeping the offset intact."""
+    limit = statement.args.get("limit")
+    offset = statement.args.get("offset")
+    requested = int(limit.expression.name) if limit is not None else ROW_LIMIT
+    skipped = int(offset.expression.name) if offset is not None else 0
+    return min(requested, ROW_LIMIT), skipped
 
 
 class SemanticQueryGateway:
@@ -193,15 +200,17 @@ class SemanticQueryGateway:
         return QueryResult(answer=_render_answer(topic, rows), rows=rows, query=query)
 
     def execute(self, query: AcceptedQuery, shop_id: str) -> tuple[tuple[Any, ...], ...]:
-        # Defence in depth: the principal re-checks the envelope it was handed.
-        if '"' in query.sql:
-            raise UnsafeSqlError(f"{PRINCIPAL} does not read quoted identifiers")
-        for clause in _TABLE.findall(query.sql.lower()):
-            for table in (name.strip() for name in clause.split(",")):
-                if table not in ALLOWED_VIEWS:
-                    raise UnsafeSqlError(f"{table} is not readable by {PRINCIPAL}")
-        if not query.sql.lower().startswith("select "):
+        # Defence in depth: the principal re-parses the envelope it was handed, so a
+        # compromised caller cannot hand execute() something validate_sql never saw.
+        try:
+            statement = sqlglot.parse_one(query.sql, read=DIALECT)
+        except ParseError as error:
+            raise UnsafeSqlError(f"{PRINCIPAL} cannot parse this query") from error
+        if not isinstance(statement, exp.Select):
             raise UnsafeSqlError(f"{PRINCIPAL} may only read")
+        for table in statement.find_all(exp.Table):
+            if table.name.lower() not in ALLOWED_VIEWS:
+                raise UnsafeSqlError(f"{table.name.lower()} is not readable by {PRINCIPAL}")
         deadline = time.monotonic() + query.timeout_seconds
         with self._lock:
             self._shop_id = shop_id

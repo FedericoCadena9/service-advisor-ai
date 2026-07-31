@@ -48,12 +48,15 @@ APPROVED_SMS = {
         'SELECT "total_mxn" FROM v_service_history, "base_quotes"',
         "SELECT service_code FROM v_service_history, base_customers",
         "SELECT name FROM v_service_history, pragma_table_list",
-        'SELECT service_code FROM "v_service_history"',
     ],
-    ids=["quoted-comma-join", "quoted-quotes-table", "bare-comma-join", "pragma-function", "quoted-view"],
+    ids=["quoted-comma-join", "quoted-quotes-table", "bare-comma-join", "pragma-function"],
 )
 def test_quoted_identifiers_and_comma_joins_are_blocked(attack: str) -> None:
-    """What if the attacker comma-joins a quoted base table instead of using JOIN?"""
+    """What if the attacker comma-joins a quoted base table instead of using JOIN?
+
+    Quoting an allowlisted view is legitimate and is covered in test_sql_ast.py; what must
+    stay blocked is the table the quotes were hiding.
+    """
     with pytest.raises(UnsafeSqlError):
         validate_sql(attack)
 
