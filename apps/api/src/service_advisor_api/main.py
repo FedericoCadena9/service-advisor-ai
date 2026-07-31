@@ -60,6 +60,12 @@ from service_advisor_api.quotes import (
 )
 from service_advisor_api.recommendations import evaluate_civic_maintenance
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
+from service_advisor_api.text_to_sql import (
+    QueryTimeoutError,
+    SemanticQueryGateway,
+    UnsafeSqlError,
+    UnsupportedQuestionError,
+)
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
 from service_advisor_api.workflows import AdvisorRun, AdvisorWorkflowStore
 
@@ -280,6 +286,25 @@ class SmsDeliveryResponse(BaseModel):
     citation_section: str | None
 
 
+class ServiceQuestionRequest(BaseModel):
+    question: str
+
+
+class RetrievalMetadataResponse(BaseModel):
+    views: list[str]
+    columns: list[str]
+    row_limit: int
+    timeout_seconds: float
+    principal: str
+
+
+class ServiceQuestionResponse(BaseModel):
+    answer: str
+    sql: str
+    rows: list[list[str]]
+    retrieval: RetrievalMetadataResponse
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
@@ -294,6 +319,8 @@ operations_store.seed()
 quote_command_store = QuoteCommandStore()
 appointment_store = AppointmentStore()
 messaging_store = MessagingStore()
+semantic_gateway = SemanticQueryGateway()
+semantic_gateway.seed()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -965,6 +992,37 @@ def advance_message(
             status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
         ) from error
     return _delivery_response(delivery)
+
+
+@app.post("/service-questions", response_model=ServiceQuestionResponse)
+def answer_service_question(
+    request: ServiceQuestionRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> ServiceQuestionResponse:
+    try:
+        result = semantic_gateway.run(request.question, claims.shop_id)
+    except UnsupportedQuestionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    except UnsafeSqlError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    except QueryTimeoutError as error:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(error)
+        ) from error
+    return ServiceQuestionResponse(
+        answer=result.answer,
+        sql=result.query.sql,
+        rows=[[str(value) for value in row] for row in result.rows],
+        retrieval=RetrievalMetadataResponse(
+            views=list(result.query.views),
+            columns=list(result.query.columns),
+            row_limit=result.query.row_limit,
+            timeout_seconds=result.query.timeout_seconds,
+            principal=result.query.principal,
+        ),
+    )
 
 
 def _run_response(run: AdvisorRun) -> AdvisorRunResponse:

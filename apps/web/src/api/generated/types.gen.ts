@@ -523,6 +523,32 @@ export type RecommendationResponse = {
 };
 
 /**
+ * RetrievalMetadataResponse
+ */
+export type RetrievalMetadataResponse = {
+    /**
+     * Views
+     */
+    views: Array<string>;
+    /**
+     * Columns
+     */
+    columns: Array<string>;
+    /**
+     * Row Limit
+     */
+    row_limit: number;
+    /**
+     * Timeout Seconds
+     */
+    timeout_seconds: number;
+    /**
+     * Principal
+     */
+    principal: string;
+};
+
+/**
  * ServiceHistoryResponse
  */
 export type ServiceHistoryResponse = {
@@ -534,6 +560,35 @@ export type ServiceHistoryResponse = {
      * Declined
      */
     declined: Array<ServiceRecordResponse>;
+};
+
+/**
+ * ServiceQuestionRequest
+ */
+export type ServiceQuestionRequest = {
+    /**
+     * Question
+     */
+    question: string;
+};
+
+/**
+ * ServiceQuestionResponse
+ */
+export type ServiceQuestionResponse = {
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Sql
+     */
+    sql: string;
+    /**
+     * Rows
+     */
+    rows: Array<Array<string>>;
+    retrieval: RetrievalMetadataResponse;
 };
 
 /**
@@ -1493,6 +1548,37 @@ export type AdvanceMessageMessagesDeliveryIdAdvancePostResponses = {
 };
 
 export type AdvanceMessageMessagesDeliveryIdAdvancePostResponse = AdvanceMessageMessagesDeliveryIdAdvancePostResponses[keyof AdvanceMessageMessagesDeliveryIdAdvancePostResponses];
+
+export type AnswerServiceQuestionServiceQuestionsPostData = {
+    body: ServiceQuestionRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/service-questions';
+};
+
+export type AnswerServiceQuestionServiceQuestionsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerServiceQuestionServiceQuestionsPostError = AnswerServiceQuestionServiceQuestionsPostErrors[keyof AnswerServiceQuestionServiceQuestionsPostErrors];
+
+export type AnswerServiceQuestionServiceQuestionsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: ServiceQuestionResponse;
+};
+
+export type AnswerServiceQuestionServiceQuestionsPostResponse = AnswerServiceQuestionServiceQuestionsPostResponses[keyof AnswerServiceQuestionServiceQuestionsPostResponses];
 
 export type StartAdvisorRunAdvisorRunsPostData = {
     body?: never;

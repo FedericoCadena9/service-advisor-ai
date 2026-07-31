@@ -89,6 +89,18 @@ function renderConsole(overrides: Partial<Parameters<typeof RecommendationConsol
       },
       escalation_reasons: [],
     }),
+    onAskData: vi.fn().mockResolvedValue({
+      answer: 'Parts availability: HON-OIL-0W20 12 in_stock.',
+      sql: 'SELECT part_number, on_hand, restock_status FROM v_parts_availability ORDER BY part_number LIMIT 100',
+      rows: [['HON-OIL-0W20', '12', 'in_stock']],
+      retrieval: {
+        views: ['v_parts_availability'],
+        columns: ['part_number', 'on_hand', 'restock_status'],
+        row_limit: 100,
+        timeout_seconds: 2,
+        principal: 'semantic_reader',
+      },
+    }),
     timeline: {
       onReserve: vi.fn().mockResolvedValue({
         id: 'appointment-1',
@@ -301,6 +313,34 @@ test('reserves a simulated slot and progresses the simulated delivery', async ()
 
   fireEvent.click(screen.getByRole('button', { name: 'Advance timeline' }))
   expect(await screen.findByText('Simulated delivery: sent')).toBeVisible()
+})
+
+test('shows the accepted SQL and retrieval metadata for an ad hoc question', async () => {
+  renderConsole()
+  fireEvent.click(screen.getByRole('tab', { name: 'Data' }))
+
+  fireEvent.change(screen.getByLabelText('Ad hoc service question'), {
+    target: { value: 'Which parts are on backorder?' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Run read-only query' }))
+
+  expect(await screen.findByLabelText('Accepted SQL')).toHaveTextContent('LIMIT 100')
+  expect(
+    screen.getByText(
+      'Views v_parts_availability · columns part_number, on_hand, restock_status · limit 100 · timeout 2s · principal semantic_reader',
+    ),
+  ).toBeVisible()
+})
+
+test('reports when no supported read-only query answers the question', async () => {
+  renderConsole({ onAskData: vi.fn().mockRejectedValue(new Error('unsupported')) })
+  fireEvent.click(screen.getByRole('tab', { name: 'Data' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Run read-only query' }))
+
+  expect(
+    await screen.findByText('No supported read-only query answers this question'),
+  ).toBeVisible()
 })
 
 test('answers a contextual question from grounded evidence', async () => {
