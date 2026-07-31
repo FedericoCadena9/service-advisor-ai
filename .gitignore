@@ -14,3 +14,4 @@ apps/interview-game/dist/
 apps/interview-game/test-results/
 apps/interview-game/playwright-report/
 .superpowers/brainstorm/
+.DS_Store
