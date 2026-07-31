@@ -38,7 +38,7 @@ from service_advisor_api.escalation import (
     EvidenceInsufficientError,
     assess_escalation,
 )
-from service_advisor_api.evaluation import run_suite
+from service_advisor_api.evaluation import DATASET_VERSION, PROMPT_VERSION, run_suite
 from service_advisor_api.explanations import explain_recommendation
 from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.messaging import (
@@ -48,6 +48,11 @@ from service_advisor_api.messaging import (
     SmsDelivery,
     compose_sms,
     validate_sms,
+)
+from service_advisor_api.observability import (
+    TraceRecorder,
+    TraceVersions,
+    quality_dashboard,
 )
 from service_advisor_api.operations import OperationsStore
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
@@ -185,6 +190,7 @@ class AdvisorRunResponse(BaseModel):
     events: list[str]
     decision: str | None
     command_executed: bool
+    trace_id: str
 
 
 class AdvisorDecisionRequest(BaseModel):
@@ -393,6 +399,31 @@ messaging_store = MessagingStore()
 semantic_gateway = SemanticQueryGateway()
 semantic_gateway.seed()
 voice_note_store = VoiceNoteStore()
+trace_recorder = TraceRecorder()
+DEMO_MODEL = "deterministic-demo"
+PROVIDER_CALL_COST_MXN = Decimal("0.0125")
+SPAN_LATENCY_MS = 12.0
+
+
+def _record_span(
+    trace_id: str | None,
+    *,
+    name: str,
+    kind: str,
+    cost_mxn: Decimal = Decimal("0.0000"),
+    attributes: dict[str, object] | None = None,
+) -> None:
+    """Emit one correlated span; prohibited fields are dropped inside the recorder."""
+    if not trace_id:
+        return
+    trace_recorder.record(
+        trace_id,
+        name=name,
+        kind=kind,
+        latency_ms=SPAN_LATENCY_MS,
+        cost_mxn=cost_mxn,
+        attributes=attributes or {},
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -617,6 +648,7 @@ def get_recommendation(
     vehicle_id: str,
     claims: Annotated[SessionClaims, Depends(current_session)],
     allow_fallback_market: bool = False,
+    x_trace_id: Annotated[str | None, Header()] = None,
 ) -> RecommendationResponse:
     vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
     if vehicle is None:
@@ -630,6 +662,24 @@ def get_recommendation(
         checkin.current_mileage_km,
         checkin.checked_in_on,
         allow_fallback_market=allow_fallback_market,
+    )
+    _record_span(
+        x_trace_id,
+        name="knowledge.retrieval",
+        kind="retrieval",
+        attributes={
+            "vehicle_id": vehicle_id,
+            "rule_version": recommendation.rule_version,
+            "citation_page": recommendation.citation_page,
+            "state": recommendation.state,
+            "confidence": recommendation.confidence,
+        },
+    )
+    _record_span(
+        x_trace_id,
+        name="read_recommendation",
+        kind="tool",
+        attributes={"tool": "read_recommendation", "actionable": recommendation.actionable},
     )
     return RecommendationResponse(
         state=recommendation.state,
@@ -876,6 +926,7 @@ def decide_quote_review(
     review_id: str,
     request: QuoteDecisionRequest,
     claims: Annotated[SessionClaims, Depends(current_session)],
+    x_trace_id: Annotated[str | None, Header()] = None,
 ) -> QuoteDecisionResponse:
     review = _load_review(review_id, claims)
     context = _quote_context(claims, review.vehicle_id, list(review.facts.service_codes))
@@ -923,6 +974,18 @@ def decide_quote_review(
         ) from error
     except StaleQuoteError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    _record_span(
+        x_trace_id,
+        name="approve_quote",
+        kind="command",
+        attributes={
+            "decision": decision.decision,
+            "approver_role": decision.approver_role,
+            "escalation_reasons": len(decision.escalation_reasons),
+            "total_mxn": str(decision.facts.total_mxn),
+            "citation_page": decision.citations.citation_page,
+        },
+    )
     return _decision_response(decision)
 
 
@@ -1178,6 +1241,47 @@ def get_voice_trace(
     return trace_payload(_load_voice_note(note_id, claims))
 
 
+def _require_manager(claims: SessionClaims) -> None:
+    if claims.role not in ("manager", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Manager role is required"
+        )
+
+
+@app.get("/admin/traces/{trace_id}")
+def get_trace(
+    trace_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> dict[str, object]:
+    _require_manager(claims)
+    try:
+        return trace_recorder.export(trace_id, claims.shop_id)
+    except PermissionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found"
+        ) from error
+
+
+@app.get("/admin/dashboard")
+def get_quality_dashboard(
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> dict[str, object]:
+    _require_manager(claims)
+    audit = quote_command_store.audit_trail(claims.shop_id)
+    report = run_suite()
+    return quality_dashboard(
+        trace_recorder,
+        claims.shop_id,
+        escalation_outcomes={
+            "approved": sum(1 for entry in audit if entry.decision == "approved"),
+            "rejected": sum(1 for entry in audit if entry.decision == "rejected"),
+            "escalated": sum(1 for entry in audit if entry.escalation_reasons),
+        },
+        evaluation_thresholds_met=report.thresholds_met,
+        evaluation_score=report.scores["overall"],
+    )
+
+
 @app.get("/admin/evaluation", response_model=EvaluationReportResponse)
 def get_evaluation_report(
     claims: Annotated[SessionClaims, Depends(current_session)],
@@ -1232,20 +1336,49 @@ def answer_service_question(
 
 
 def _run_response(run: AdvisorRun) -> AdvisorRunResponse:
-    return AdvisorRunResponse(id=run.id, events=list(run.events), decision=run.decision, command_executed=run.command_executed)
+    return AdvisorRunResponse(id=run.id, events=list(run.events), decision=run.decision, command_executed=run.command_executed, trace_id=run.trace_id)
 
 
 @app.post("/advisor-runs", response_model=AdvisorRunResponse, status_code=status.HTTP_201_CREATED)
 def start_advisor_run(claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
-    return _run_response(workflow_store.start(claims.shop_id, claims.demo_session_id))
+    trace_id = trace_recorder.start_trace(
+        claims.shop_id,
+        TraceVersions(
+            rule_version=None,
+            prompt_version=PROMPT_VERSION,
+            dataset_version=DATASET_VERSION,
+            model=DEMO_MODEL,
+        ),
+    )
+    run = workflow_store.start(claims.shop_id, claims.demo_session_id, trace_id)
+    _record_span(
+        trace_id,
+        name="advisor_run.start",
+        kind="workflow",
+        attributes={"run_id": run.id, "events": len(run.events), "role": claims.role},
+    )
+    _record_span(
+        trace_id,
+        name="POST /advisor-runs",
+        kind="http",
+        attributes={"status_code": 201, "shop_id": claims.shop_id},
+    )
+    return _run_response(run)
 
 
 @app.get("/advisor-runs/{run_id}", response_model=AdvisorRunResponse)
 def resume_advisor_run(run_id: str, claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
     try:
-        return _run_response(workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id))
+        run = workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id)
     except (KeyError, PermissionError) as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Advisor run not found") from error
+    _record_span(
+        run.trace_id,
+        name="advisor_run.resume",
+        kind="workflow",
+        attributes={"run_id": run.id, "events": len(run.events)},
+    )
+    return _run_response(run)
 
 
 @app.get("/advisor-runs/{run_id}/events")
@@ -1254,24 +1387,72 @@ def stream_advisor_run_events(run_id: str, claims: Annotated[SessionClaims, Depe
         run = workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id)
     except (KeyError, PermissionError) as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Advisor run not found") from error
+    _record_span(
+        run.trace_id,
+        name="GET /advisor-runs/{run_id}/events",
+        kind="http",
+        attributes={"status_code": 200, "events": len(run.events)},
+    )
     return StreamingResponse((f"data: {event}\n\n" for event in run.events), media_type="text/event-stream")
 
 
 @app.post("/advisor-runs/{run_id}/decision", response_model=AdvisorRunResponse)
 def decide_advisor_run(run_id: str, request: AdvisorDecisionRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> AdvisorRunResponse:
     workflow_store.reconnect(run_id, claims.shop_id, claims.demo_session_id)
-    return _run_response(workflow_store.decide(run_id, request.decision))
+    run = workflow_store.decide(run_id, request.decision)
+    _record_span(
+        run.trace_id,
+        name="advisor_run.decision",
+        kind="command",
+        attributes={
+            "run_id": run.id,
+            "decision": run.decision,
+            "command_executed": run.command_executed,
+            "role": claims.role,
+        },
+    )
+    return _run_response(run)
 
 
 @app.post("/explanations", response_model=ExplanationResponse)
-def create_explanation(request: ExplanationRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> ExplanationResponse:
+def create_explanation(
+    request: ExplanationRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+    x_trace_id: Annotated[str | None, Header()] = None,
+) -> ExplanationResponse:
     del claims
     explanation = explain_recommendation(evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27", evidence_available=request.evidence_available))
+    _record_span(
+        x_trace_id,
+        name="explanation",
+        kind="provider",
+        cost_mxn=PROVIDER_CALL_COST_MXN,
+        attributes={
+            "model": DEMO_MODEL,
+            "degraded": explanation.degraded,
+            "citation_page": explanation.citation_page,
+        },
+    )
     return ExplanationResponse(**explanation.__dict__)
 
 
 @app.post("/contextual-chat", response_model=ExplanationResponse)
-def contextual_chat(request: ChatRequest, claims: Annotated[SessionClaims, Depends(current_session)]) -> ExplanationResponse:
+def contextual_chat(
+    request: ChatRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+    x_trace_id: Annotated[str | None, Header()] = None,
+) -> ExplanationResponse:
     del claims
     reply = answer_contextual_question(request.question, evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27"), request.provider_available)
+    _record_span(
+        x_trace_id,
+        name="contextual_chat",
+        kind="provider",
+        cost_mxn=PROVIDER_CALL_COST_MXN,
+        attributes={
+            "model": DEMO_MODEL,
+            "degraded": reply.degraded,
+            "citation_page": reply.citation_page,
+        },
+    )
     return ExplanationResponse(**reply.__dict__)

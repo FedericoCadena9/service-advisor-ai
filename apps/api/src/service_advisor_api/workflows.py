@@ -10,14 +10,15 @@ class AdvisorRun:
     events: tuple[str, ...]
     decision: str | None = None
     command_executed: bool = False
+    trace_id: str = ""
 
 
 class AdvisorWorkflowStore:
     def __init__(self) -> None:
         self._runs: dict[str, AdvisorRun] = {}
 
-    def start(self, shop_id: str, demo_session_id: str) -> AdvisorRun:
-        run = AdvisorRun(str(uuid4()), shop_id, demo_session_id, ("started", "context_loaded", "awaiting_human_review"))
+    def start(self, shop_id: str, demo_session_id: str, trace_id: str = "") -> AdvisorRun:
+        run = AdvisorRun(str(uuid4()), shop_id, demo_session_id, ("started", "context_loaded", "awaiting_human_review"), trace_id=trace_id)
         self._runs[run.id] = run
         return run
 
@@ -31,6 +32,6 @@ class AdvisorWorkflowStore:
         run = self._runs[run_id]
         if run.decision is not None:
             return run
-        updated = AdvisorRun(run.id, run.shop_id, run.demo_session_id, run.events + ("approved",), decision, decision == "approve")
+        updated = AdvisorRun(run.id, run.shop_id, run.demo_session_id, run.events + ("approved",), decision, decision == "approve", run.trace_id)
         self._runs[run_id] = updated
         return updated

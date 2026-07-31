@@ -1,4 +1,7 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useState } from 'react'
+
+import { fetchQualityDashboard } from './api/dashboard'
+import { QualityDashboard } from './components/advisor/QualityDashboard'
 
 import { saveCheckin } from './api/checkins'
 import { enterDemoWorkspace } from './api/demo-session'
@@ -38,6 +41,10 @@ export default function App() {
   const [recommendation, setRecommendation] = useState<import('./api/generated/types.gen').RecommendationResponse>()
   const [advisorRunId, setAdvisorRunId] = useState<string | null>(null)
   const [voiceNoteId, setVoiceNoteId] = useState<string | null>(null)
+  const loadDashboard = useCallback(async () => {
+    if (!token) throw new Error('Session required')
+    return fetchQualityDashboard(token)
+  }, [token])
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -196,6 +203,9 @@ export default function App() {
           </form>
           {checkinSaved && <p role="status">Check-in confirmed</p>}
           <RecommendationConsole recommendation={recommendation} onStartRun={async () => { if (!token) throw new Error('Session required'); const run = await startAdvisorRun(token); setAdvisorRunId(run.id); return { id: run.id, events: await fetchAdvisorRunEvents(token, run.id) } }} onApproveRun={async () => { if (!token || !advisorRunId) throw new Error('Run required'); await decideAdvisorRun(token, advisorRunId) }} onAsk={async (question) => { if (!token) throw new Error('Session required'); return (await askContextualChat(token, question)).text }} onDraftQuote={async (serviceCodes) => { if (!token) throw new Error('Session required'); return draftQuote(token, serviceCodes) }} onOpenReview={async (serviceCodes) => { if (!token) throw new Error('Session required'); return openQuoteReview(token, serviceCodes) }} onDecideReview={async (reviewId, decision, reason) => { if (!token) throw new Error('Session required'); return decideQuoteReview(token, reviewId, decision, { idempotencyKey: reviewId, reason }) }} onAskData={async (question) => { if (!token) throw new Error('Session required'); return askServiceQuestion(token, question) }} timeline={{ onReserve: async (quoteId) => { if (!token) throw new Error('Session required'); return reserveAppointment(token, quoteId) }, onPreview: async (quoteId) => { if (!token) throw new Error('Session required'); return previewSms(token, quoteId) }, onSend: async (quoteId, text) => { if (!token) throw new Error('Session required'); return sendSms(token, quoteId, text) }, onAdvance: async (deliveryId) => { if (!token) throw new Error('Session required'); return advanceMessage(token, deliveryId) } }} />
+          {(workspace.role === 'manager' || workspace.role === 'admin') && (
+            <QualityDashboard onLoad={loadDashboard} />
+          )}
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

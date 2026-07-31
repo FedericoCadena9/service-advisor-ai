@@ -30,6 +30,10 @@ export type AdvisorRunResponse = {
      * Command Executed
      */
     command_executed: boolean;
+    /**
+     * Trace Id
+     */
+    trace_id: string;
 };
 
 /**
@@ -1307,6 +1311,10 @@ export type GetRecommendationVehiclesVehicleIdRecommendationGetData = {
     body?: never;
     headers?: {
         /**
+         * X-Trace-Id
+         */
+        'x-trace-id'?: string | null;
+        /**
          * Authorization
          */
         authorization?: string | null;
@@ -1487,6 +1495,10 @@ export type ListQuoteAuditQuoteAuditGetResponse = ListQuoteAuditQuoteAuditGetRes
 export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostData = {
     body: QuoteDecisionRequest;
     headers?: {
+        /**
+         * X-Trace-Id
+         */
+        'x-trace-id'?: string | null;
         /**
          * Authorization
          */
@@ -1806,6 +1818,79 @@ export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponses = {
 
 export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponse = GetVoiceTraceVoiceNotesNoteIdTraceGetResponses[keyof GetVoiceTraceVoiceNotesNoteIdTraceGetResponses];
 
+export type GetTraceAdminTracesTraceIdGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Trace Id
+         */
+        trace_id: string;
+    };
+    query?: never;
+    url: '/admin/traces/{trace_id}';
+};
+
+export type GetTraceAdminTracesTraceIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTraceAdminTracesTraceIdGetError = GetTraceAdminTracesTraceIdGetErrors[keyof GetTraceAdminTracesTraceIdGetErrors];
+
+export type GetTraceAdminTracesTraceIdGetResponses = {
+    /**
+     * Response Get Trace Admin Traces  Trace Id  Get
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type GetTraceAdminTracesTraceIdGetResponse = GetTraceAdminTracesTraceIdGetResponses[keyof GetTraceAdminTracesTraceIdGetResponses];
+
+export type GetQualityDashboardAdminDashboardGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/admin/dashboard';
+};
+
+export type GetQualityDashboardAdminDashboardGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetQualityDashboardAdminDashboardGetError = GetQualityDashboardAdminDashboardGetErrors[keyof GetQualityDashboardAdminDashboardGetErrors];
+
+export type GetQualityDashboardAdminDashboardGetResponses = {
+    /**
+     * Response Get Quality Dashboard Admin Dashboard Get
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type GetQualityDashboardAdminDashboardGetResponse = GetQualityDashboardAdminDashboardGetResponses[keyof GetQualityDashboardAdminDashboardGetResponses];
+
 export type GetEvaluationReportAdminEvaluationGetData = {
     body?: never;
     headers?: {
@@ -2009,6 +2094,10 @@ export type CreateExplanationExplanationsPostData = {
     body: ExplanationRequest;
     headers?: {
         /**
+         * X-Trace-Id
+         */
+        'x-trace-id'?: string | null;
+        /**
          * Authorization
          */
         authorization?: string | null;
@@ -2039,6 +2128,10 @@ export type CreateExplanationExplanationsPostResponse = CreateExplanationExplana
 export type ContextualChatContextualChatPostData = {
     body: ChatRequest;
     headers?: {
+        /**
+         * X-Trace-Id
+         */
+        'x-trace-id'?: string | null;
         /**
          * Authorization
          */
