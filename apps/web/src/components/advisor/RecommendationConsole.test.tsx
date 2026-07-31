@@ -89,6 +89,45 @@ function renderConsole(overrides: Partial<Parameters<typeof RecommendationConsol
       },
       escalation_reasons: [],
     }),
+    timeline: {
+      onReserve: vi.fn().mockResolvedValue({
+        id: 'appointment-1',
+        quote_id: 'quote-1',
+        bay_slot_id: 'bay-1-morning',
+        starts_at: '2026-08-03T09:00:00',
+        approver_role: 'advisor',
+        simulated: true,
+      }),
+      onPreview: vi.fn().mockResolvedValue({
+        text: 'Hola Demo Customer: su servicio incluye cambio de aceite y filtro. Total $1,847.88 MXN con IVA incluido. Cita 2026-08-03T09:00:00. ¿Confirma la cita?',
+        segments: 1,
+        priorities: ['cambio de aceite y filtro'],
+      }),
+      onSend: vi.fn().mockResolvedValue({
+        id: 'delivery-1',
+        quote_id: 'quote-1',
+        text: 'Hola Demo Customer: ¿Confirma la cita?',
+        segments: 1,
+        state: 'queued',
+        simulated: true,
+        approver_role: 'advisor',
+        rule_version: 'honda-civic-2019-lx-v1',
+        citation_page: 42,
+        citation_section: 'Maintenance Minder',
+      }),
+      onAdvance: vi.fn().mockResolvedValue({
+        id: 'delivery-1',
+        quote_id: 'quote-1',
+        text: 'Hola Demo Customer: ¿Confirma la cita?',
+        segments: 1,
+        state: 'sent',
+        simulated: true,
+        approver_role: 'advisor',
+        rule_version: 'honda-civic-2019-lx-v1',
+        citation_page: 42,
+        citation_section: 'Maintenance Minder',
+      }),
+    },
     ...overrides,
   }
   render(<RecommendationConsole {...props} />)
@@ -227,6 +266,41 @@ test('hides approval when evidence is insufficient for every role', async () => 
     await screen.findByText('Not approvable by any role: Reviewed evidence is missing or contradictory'),
   ).toBeVisible()
   expect(screen.queryByRole('button', { name: 'Approve quote' })).toBeNull()
+})
+
+test('keeps the customer timeline behind an approved quote', async () => {
+  renderConsole()
+  fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
+
+  expect(
+    screen.getByText('Approve a quote to reserve an appointment and prepare a message.'),
+  ).toBeVisible()
+})
+
+test('reserves a simulated slot and progresses the simulated delivery', async () => {
+  renderConsole()
+  fireEvent.click(screen.getByRole('tab', { name: 'Approval' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open approval' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve quote' }))
+  await screen.findByText('Quote quote-1 approved by advisor')
+  fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reserve appointment' }))
+  expect(
+    await screen.findByText('Simulated reservation bay-1-morning at 2026-08-03T09:00:00'),
+  ).toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Preview message' }))
+  expect(await screen.findByText('1 segment(s) · 1 priorities')).toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Enqueue message' }))
+  expect(await screen.findByText('Simulated delivery: queued')).toBeVisible()
+  expect(
+    screen.getByText('Approved by advisor · honda-civic-2019-lx-v1 page 42'),
+  ).toBeVisible()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Advance timeline' }))
+  expect(await screen.findByText('Simulated delivery: sent')).toBeVisible()
 })
 
 test('answers a contextual question from grounded evidence', async () => {

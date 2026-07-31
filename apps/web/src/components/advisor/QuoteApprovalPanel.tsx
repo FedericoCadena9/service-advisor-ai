@@ -8,9 +8,11 @@ const BUNDLE = ['HONDA-A1']
 export function QuoteApprovalPanel({
   onOpenReview,
   onDecide,
+  onApproved,
 }: {
   onOpenReview: (serviceCodes: string[]) => Promise<QuoteReviewResponse>
   onDecide: (reviewId: string, decision: 'approve' | 'reject', reason?: string) => Promise<QuoteDecisionResponse>
+  onApproved: (quoteId: string) => void
 }) {
   const [review, setReview] = useState<QuoteReviewResponse>()
   const [decision, setDecision] = useState<QuoteDecisionResponse>()
@@ -26,7 +28,9 @@ export function QuoteApprovalPanel({
   async function decide(choice: 'approve' | 'reject') {
     if (!review) return
     try {
-      setDecision(await onDecide(review.id, choice, choice === 'reject' ? 'Customer declined' : reason || undefined))
+      const saved = await onDecide(review.id, choice, choice === 'reject' ? 'Customer declined' : reason || undefined)
+      setDecision(saved)
+      if (saved.quote_id) onApproved(saved.quote_id)
       setError('')
     } catch {
       setDecision(undefined)

@@ -33,6 +33,36 @@ export type AdvisorRunResponse = {
 };
 
 /**
+ * AppointmentResponse
+ */
+export type AppointmentResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Quote Id
+     */
+    quote_id: string;
+    /**
+     * Bay Slot Id
+     */
+    bay_slot_id: string;
+    /**
+     * Starts At
+     */
+    starts_at: string;
+    /**
+     * Approver Role
+     */
+    approver_role: string;
+    /**
+     * Simulated
+     */
+    simulated: boolean;
+};
+
+/**
  * ChatRequest
  */
 export type ChatRequest = {
@@ -522,6 +552,80 @@ export type ServiceRecordResponse = {
      * Status
      */
     status: string;
+};
+
+/**
+ * SmsDeliveryResponse
+ */
+export type SmsDeliveryResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Quote Id
+     */
+    quote_id: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Segments
+     */
+    segments: number;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Simulated
+     */
+    simulated: boolean;
+    /**
+     * Approver Role
+     */
+    approver_role: string;
+    /**
+     * Rule Version
+     */
+    rule_version: string | null;
+    /**
+     * Citation Page
+     */
+    citation_page: number | null;
+    /**
+     * Citation Section
+     */
+    citation_section: string | null;
+};
+
+/**
+ * SmsPreviewResponse
+ */
+export type SmsPreviewResponse = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Segments
+     */
+    segments: number;
+    /**
+     * Priorities
+     */
+    priorities: Array<string>;
+};
+
+/**
+ * SmsRequest
+ */
+export type SmsRequest = {
+    /**
+     * Text
+     */
+    text: string;
 };
 
 /**
@@ -1209,6 +1313,186 @@ export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponses = {
 };
 
 export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponse = DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponses[keyof DecideQuoteReviewQuoteReviewsReviewIdDecisionPostResponses];
+
+export type ReserveAppointmentQuotesQuoteIdAppointmentPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Quote Id
+         */
+        quote_id: string;
+    };
+    query?: never;
+    url: '/quotes/{quote_id}/appointment';
+};
+
+export type ReserveAppointmentQuotesQuoteIdAppointmentPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReserveAppointmentQuotesQuoteIdAppointmentPostError = ReserveAppointmentQuotesQuoteIdAppointmentPostErrors[keyof ReserveAppointmentQuotesQuoteIdAppointmentPostErrors];
+
+export type ReserveAppointmentQuotesQuoteIdAppointmentPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: AppointmentResponse;
+};
+
+export type ReserveAppointmentQuotesQuoteIdAppointmentPostResponse = ReserveAppointmentQuotesQuoteIdAppointmentPostResponses[keyof ReserveAppointmentQuotesQuoteIdAppointmentPostResponses];
+
+export type PreviewSmsQuotesQuoteIdSmsPreviewPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Quote Id
+         */
+        quote_id: string;
+    };
+    query?: never;
+    url: '/quotes/{quote_id}/sms-preview';
+};
+
+export type PreviewSmsQuotesQuoteIdSmsPreviewPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewSmsQuotesQuoteIdSmsPreviewPostError = PreviewSmsQuotesQuoteIdSmsPreviewPostErrors[keyof PreviewSmsQuotesQuoteIdSmsPreviewPostErrors];
+
+export type PreviewSmsQuotesQuoteIdSmsPreviewPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SmsPreviewResponse;
+};
+
+export type PreviewSmsQuotesQuoteIdSmsPreviewPostResponse = PreviewSmsQuotesQuoteIdSmsPreviewPostResponses[keyof PreviewSmsQuotesQuoteIdSmsPreviewPostResponses];
+
+export type EnqueueSmsQuotesQuoteIdMessagesPostData = {
+    body: SmsRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Quote Id
+         */
+        quote_id: string;
+    };
+    query?: never;
+    url: '/quotes/{quote_id}/messages';
+};
+
+export type EnqueueSmsQuotesQuoteIdMessagesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EnqueueSmsQuotesQuoteIdMessagesPostError = EnqueueSmsQuotesQuoteIdMessagesPostErrors[keyof EnqueueSmsQuotesQuoteIdMessagesPostErrors];
+
+export type EnqueueSmsQuotesQuoteIdMessagesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SmsDeliveryResponse;
+};
+
+export type EnqueueSmsQuotesQuoteIdMessagesPostResponse = EnqueueSmsQuotesQuoteIdMessagesPostResponses[keyof EnqueueSmsQuotesQuoteIdMessagesPostResponses];
+
+export type GetMessageMessagesDeliveryIdGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Delivery Id
+         */
+        delivery_id: string;
+    };
+    query?: never;
+    url: '/messages/{delivery_id}';
+};
+
+export type GetMessageMessagesDeliveryIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetMessageMessagesDeliveryIdGetError = GetMessageMessagesDeliveryIdGetErrors[keyof GetMessageMessagesDeliveryIdGetErrors];
+
+export type GetMessageMessagesDeliveryIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SmsDeliveryResponse;
+};
+
+export type GetMessageMessagesDeliveryIdGetResponse = GetMessageMessagesDeliveryIdGetResponses[keyof GetMessageMessagesDeliveryIdGetResponses];
+
+export type AdvanceMessageMessagesDeliveryIdAdvancePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Delivery Id
+         */
+        delivery_id: string;
+    };
+    query?: never;
+    url: '/messages/{delivery_id}/advance';
+};
+
+export type AdvanceMessageMessagesDeliveryIdAdvancePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdvanceMessageMessagesDeliveryIdAdvancePostError = AdvanceMessageMessagesDeliveryIdAdvancePostErrors[keyof AdvanceMessageMessagesDeliveryIdAdvancePostErrors];
+
+export type AdvanceMessageMessagesDeliveryIdAdvancePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SmsDeliveryResponse;
+};
+
+export type AdvanceMessageMessagesDeliveryIdAdvancePostResponse = AdvanceMessageMessagesDeliveryIdAdvancePostResponses[keyof AdvanceMessageMessagesDeliveryIdAdvancePostResponses];
 
 export type StartAdvisorRunAdvisorRunsPostData = {
     body?: never;

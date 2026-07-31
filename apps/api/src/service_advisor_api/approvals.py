@@ -197,6 +197,15 @@ class QuoteCommandStore:
         self._reviews[review_id] = replace(review, status="rejected")
         return decision
 
+    def approved_quote(
+        self, quote_id: str, shop_id: str, demo_session_id: str
+    ) -> tuple[QuoteDecision, QuoteReview]:
+        for decision in self._audit:
+            if decision.quote_id == quote_id and decision.decision == "approved":
+                review = self.get(decision.review_id, shop_id, demo_session_id)
+                return decision, review
+        raise KeyError(quote_id)
+
     def audit_trail(self, shop_id: str) -> tuple[QuoteDecision, ...]:
         return tuple(decision for decision in self._audit if self._shop_of(decision) == shop_id)
 
