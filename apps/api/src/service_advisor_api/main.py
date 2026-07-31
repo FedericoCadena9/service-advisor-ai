@@ -38,6 +38,7 @@ from service_advisor_api.escalation import (
     EvidenceInsufficientError,
     assess_escalation,
 )
+from service_advisor_api.evaluation import run_suite
 from service_advisor_api.explanations import explain_recommendation
 from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.messaging import (
@@ -342,6 +343,18 @@ class VoiceNoteResponse(BaseModel):
 
 class ConfirmTranscriptRequest(BaseModel):
     transcript: str
+
+
+class EvaluationReportResponse(BaseModel):
+    case_count: int
+    scores: dict[str, float]
+    thresholds_met: bool
+    kinds: dict[str, int]
+    dataset_version: str
+    prompt_version: str
+    provider: str
+    rule_versions: list[str]
+    failing_case_ids: list[str]
 
 
 class ServiceQuestionRequest(BaseModel):
@@ -1163,6 +1176,28 @@ def get_voice_trace(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> dict[str, object]:
     return trace_payload(_load_voice_note(note_id, claims))
+
+
+@app.get("/admin/evaluation", response_model=EvaluationReportResponse)
+def get_evaluation_report(
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> EvaluationReportResponse:
+    if claims.role not in ("manager", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Manager role is required"
+        )
+    report = run_suite()
+    return EvaluationReportResponse(
+        case_count=len(report.results),
+        scores=report.scores,
+        thresholds_met=report.thresholds_met,
+        kinds=report.kinds,
+        dataset_version=report.dataset_version,
+        prompt_version=report.prompt_version,
+        provider=report.provider,
+        rule_versions=list(report.rule_versions),
+        failing_case_ids=[result.case_id for result in report.results if not result.passed],
+    )
 
 
 @app.post("/service-questions", response_model=ServiceQuestionResponse)

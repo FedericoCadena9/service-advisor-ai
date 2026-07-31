@@ -195,6 +195,52 @@ export type DemoSessionResponse = {
 };
 
 /**
+ * EvaluationReportResponse
+ */
+export type EvaluationReportResponse = {
+    /**
+     * Case Count
+     */
+    case_count: number;
+    /**
+     * Scores
+     */
+    scores: {
+        [key: string]: number;
+    };
+    /**
+     * Thresholds Met
+     */
+    thresholds_met: boolean;
+    /**
+     * Kinds
+     */
+    kinds: {
+        [key: string]: number;
+    };
+    /**
+     * Dataset Version
+     */
+    dataset_version: string;
+    /**
+     * Prompt Version
+     */
+    prompt_version: string;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Rule Versions
+     */
+    rule_versions: Array<string>;
+    /**
+     * Failing Case Ids
+     */
+    failing_case_ids: Array<string>;
+};
+
+/**
  * ExplanationRequest
  */
 export type ExplanationRequest = {
@@ -1759,6 +1805,37 @@ export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponses = {
 };
 
 export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponse = GetVoiceTraceVoiceNotesNoteIdTraceGetResponses[keyof GetVoiceTraceVoiceNotesNoteIdTraceGetResponses];
+
+export type GetEvaluationReportAdminEvaluationGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/admin/evaluation';
+};
+
+export type GetEvaluationReportAdminEvaluationGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEvaluationReportAdminEvaluationGetError = GetEvaluationReportAdminEvaluationGetErrors[keyof GetEvaluationReportAdminEvaluationGetErrors];
+
+export type GetEvaluationReportAdminEvaluationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationReportResponse;
+};
+
+export type GetEvaluationReportAdminEvaluationGetResponse = GetEvaluationReportAdminEvaluationGetResponses[keyof GetEvaluationReportAdminEvaluationGetResponses];
 
 export type AnswerServiceQuestionServiceQuestionsPostData = {
     body: ServiceQuestionRequest;
