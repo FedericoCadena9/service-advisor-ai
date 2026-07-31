@@ -210,8 +210,49 @@ TOYOTA_CONFIGURATIONS = (
     ),
 )
 
+def _ford(
+    model: str,
+    engine: str,
+    drivetrain: str,
+    service_code: str,
+    version: str,
+    citation_page: int,
+    interval_km: int,
+) -> ReviewedConfiguration:
+    return ReviewedConfiguration(
+        make="Ford",
+        model=model,
+        engine=engine,
+        drivetrain=drivetrain,
+        market="Mexico",
+        source=_source(
+            market="Mexico",
+            text=f"Ford {model} {engine} {drivetrain} Mexico maintenance schedule reviewed source",
+            retrieval_date="2026-07-31",
+            citation_page=citation_page,
+            citation_section="Programa de mantenimiento",
+        ),
+        rule=MaintenanceRule(
+            service_code=service_code,
+            version=version,
+            citation_page=citation_page,
+            citation_section="Programa de mantenimiento",
+            interval_km=interval_km,
+        ),
+    )
+
+
+# Engine and drivetrain are part of the key: the F-150 schedules differ per powertrain.
+FORD_CONFIGURATIONS = (
+    _ford("F-150", "3.5L", "4WD", "FORD-SCHED-A", "ford-f150-2021-xlt-35-4wd-v1", 27, 16_000),
+    _ford("F-150", "5.0L", "RWD", "FORD-SCHED-B", "ford-f150-2021-xlt-50-rwd-v1", 29, 20_000),
+    _ford("Escape", "1.5L", "FWD", "FORD-SCHED-C", "ford-escape-2022-se-v1", 33, 16_000),
+    _ford("Explorer", "2.3L", "AWD", "FORD-SCHED-D", "ford-explorer-2020-xlt-v1", 39, 24_000),
+    _ford("Ranger", "2.3L", "4WD", "FORD-SCHED-E", "ford-ranger-2021-xlt-v1", 44, 16_000),
+)
+
 REVIEWED_CONFIGURATIONS: tuple[ReviewedConfiguration, ...] = (
-    HONDA_CONFIGURATIONS + TOYOTA_CONFIGURATIONS
+    HONDA_CONFIGURATIONS + TOYOTA_CONFIGURATIONS + FORD_CONFIGURATIONS
 )
 
 

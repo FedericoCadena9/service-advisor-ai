@@ -83,6 +83,22 @@ class CanonicalVehicleStore:
             "demo-shop", "toyota-tacoma-2020-sr5", "Demo Fleet", 2020,
             "Toyota", "Tacoma", "SR5", "3.5L", "4WD", "Mexico", 46200, "2026-06-26", 1,
         ),
+        (
+            "demo-shop", "ford-f150-2021-xlt", "Demo Fleet", 2021,
+            "Ford", "F-150", "XLT", "3.5L", "4WD", "Mexico", 15100, "2026-06-27", 1,
+        ),
+        (
+            "demo-shop", "ford-escape-2022-se", "Demo Fleet", 2022,
+            "Ford", "Escape", "SE", "1.5L", "FWD", "Mexico", 14800, "2026-06-28", 1,
+        ),
+        (
+            "demo-shop", "ford-explorer-2020-xlt", "Demo Fleet", 2020,
+            "Ford", "Explorer", "XLT", "2.3L", "AWD", "Mexico", 22600, "2026-06-29", 1,
+        ),
+        (
+            "demo-shop", "ford-ranger-2021-xlt", "Demo Fleet", 2021,
+            "Ford", "Ranger", "XLT", "2.3L", "4WD", "Mexico", 15400, "2026-06-30", 1,
+        ),
     )
 
     def seed(self) -> None:
