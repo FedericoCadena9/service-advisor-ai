@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NamedTuple
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,13 @@ from service_advisor_api.checkins import (
     InvalidCheckinError,
     UseProfile,
     validate_checkin,
+)
+from service_advisor_api.escalation import (
+    EscalationAssessment,
+    EscalationReasonRequiredError,
+    EscalationRequiredError,
+    EvidenceInsufficientError,
+    assess_escalation,
 )
 from service_advisor_api.explanations import explain_recommendation
 from service_advisor_api.knowledge import KnowledgePack
@@ -207,6 +214,10 @@ class QuoteReviewResponse(BaseModel):
     citations: QuoteCitationsResponse
     status: str
     invalidation_reason: str | None
+    escalation_required: bool
+    escalation_reasons: list[str]
+    evidence_blocked: bool
+    blocking_reason: str | None
 
 
 class QuoteDecisionRequest(BaseModel):
@@ -225,6 +236,7 @@ class QuoteDecisionResponse(BaseModel):
     reason: str | None
     facts: QuoteFactsResponse
     citations: QuoteCitationsResponse
+    escalation_reasons: list[str]
 
 
 app = FastAPI(title="Service Advisor API", version="0.1.0")
@@ -503,9 +515,17 @@ def create_quote_draft(
     )
 
 
+class QuoteContext(NamedTuple):
+    facts: QuoteFacts
+    citations: QuoteCitations
+    fingerprint: str
+    unavailable_service_codes: tuple[str, ...]
+    declines_per_service: tuple[int, ...]
+
+
 def _quote_context(
     claims: SessionClaims, vehicle_id: str, service_codes: list[str]
-) -> tuple[QuoteFacts, QuoteCitations, str]:
+) -> QuoteContext:
     """Recompute the volatile quote inputs an approval command depends on."""
     vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
     if vehicle is None:
@@ -545,7 +565,30 @@ def _quote_context(
         citation_page=recommendation.citation_page,
         citation_section=recommendation.citation_section,
     )
-    return facts, citations, fingerprint(draft)
+    declined = service_history_store.declined(claims.shop_id, vehicle_id)
+    return QuoteContext(
+        facts=facts,
+        citations=citations,
+        fingerprint=fingerprint(draft),
+        unavailable_service_codes=tuple(
+            line.service_code for line in draft.lines if not line.available
+        ),
+        declines_per_service=tuple(
+            sum(1 for record in declined if record.service_code == service_code)
+            for service_code in service_codes
+        ),
+    )
+
+
+def _assess(context: QuoteContext, invalidation_reason: str | None) -> EscalationAssessment:
+    return assess_escalation(
+        total_mxn=context.facts.total_mxn,
+        rule_version=context.citations.rule_version,
+        citation_page=context.citations.citation_page,
+        declines_per_service=context.declines_per_service,
+        invalidation_reason=invalidation_reason,
+        unavailable_service_codes=context.unavailable_service_codes,
+    )
 
 
 def _facts_response(facts: QuoteFacts) -> QuoteFactsResponse:
@@ -559,7 +602,9 @@ def _facts_response(facts: QuoteFacts) -> QuoteFactsResponse:
     )
 
 
-def _review_response(review: QuoteReview, claims: SessionClaims) -> QuoteReviewResponse:
+def _review_response(
+    review: QuoteReview, claims: SessionClaims, escalation: EscalationAssessment
+) -> QuoteReviewResponse:
     return QuoteReviewResponse(
         id=review.id,
         vehicle_id=review.vehicle_id,
@@ -569,6 +614,10 @@ def _review_response(review: QuoteReview, claims: SessionClaims) -> QuoteReviewR
         citations=QuoteCitationsResponse(**review.citations.__dict__),
         status=review.status,
         invalidation_reason=review.invalidation_reason,
+        escalation_required=escalation.required,
+        escalation_reasons=list(escalation.reasons),
+        evidence_blocked=escalation.evidence_blocked,
+        blocking_reason=escalation.blocking_reason,
     )
 
 
@@ -583,6 +632,7 @@ def _decision_response(decision: QuoteDecision) -> QuoteDecisionResponse:
         reason=decision.reason,
         facts=_facts_response(decision.facts),
         citations=QuoteCitationsResponse(**decision.citations.__dict__),
+        escalation_reasons=list(decision.escalation_reasons),
     )
 
 
@@ -605,16 +655,16 @@ def open_quote_review(
     request: QuoteDraftRequest,
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> QuoteReviewResponse:
-    facts, citations, current_fingerprint = _quote_context(claims, vehicle_id, request.service_codes)
+    context = _quote_context(claims, vehicle_id, request.service_codes)
     review = quote_command_store.open_review(
         shop_id=claims.shop_id,
         demo_session_id=claims.demo_session_id,
         vehicle_id=vehicle_id,
-        facts=facts,
-        citations=citations,
-        fingerprint=current_fingerprint,
+        facts=context.facts,
+        citations=context.citations,
+        fingerprint=context.fingerprint,
     )
-    return _review_response(review, claims)
+    return _review_response(review, claims, _assess(context, review.invalidation_reason))
 
 
 @app.get("/quote-reviews/{review_id}", response_model=QuoteReviewResponse)
@@ -623,12 +673,22 @@ def get_quote_review(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> QuoteReviewResponse:
     review = _load_review(review_id, claims)
-    facts, _, current_fingerprint = _quote_context(
-        claims, review.vehicle_id, list(review.facts.service_codes)
-    )
+    context = _quote_context(claims, review.vehicle_id, list(review.facts.service_codes))
+    revalidated = quote_command_store.revalidate(review.id, context.facts, context.fingerprint)
     return _review_response(
-        quote_command_store.revalidate(review.id, facts, current_fingerprint), claims
+        revalidated, claims, _assess(context, revalidated.invalidation_reason)
     )
+
+
+@app.get("/quote-audit", response_model=list[QuoteDecisionResponse])
+def list_quote_audit(
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> list[QuoteDecisionResponse]:
+    if claims.role not in ("manager", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Manager role is required"
+        )
+    return [_decision_response(decision) for decision in quote_command_store.audit_trail(claims.shop_id)]
 
 
 @app.post("/quote-reviews/{review_id}/decision", response_model=QuoteDecisionResponse)
@@ -638,6 +698,8 @@ def decide_quote_review(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> QuoteDecisionResponse:
     review = _load_review(review_id, claims)
+    context = _quote_context(claims, review.vehicle_id, list(review.facts.service_codes))
+    escalation = _assess(context, review.invalidation_reason)
     if request.decision == "reject":
         if not (request.reason or "").strip():
             raise HTTPException(
@@ -652,12 +714,10 @@ def decide_quote_review(
                 approver_role=claims.role,
                 approver_session_id=claims.demo_session_id,
                 reason=request.reason or "",
+                escalation_reasons=escalation.reasons,
             )
         )
 
-    facts, _, current_fingerprint = _quote_context(
-        claims, review.vehicle_id, list(review.facts.service_codes)
-    )
     try:
         decision = quote_command_store.approve(
             review.id,
@@ -666,9 +726,21 @@ def decide_quote_review(
             approver_role=claims.role,
             approver_session_id=claims.demo_session_id,
             idempotency_key=request.idempotency_key,
-            current_facts=facts,
-            current_fingerprint=current_fingerprint,
+            current_facts=context.facts,
+            current_fingerprint=context.fingerprint,
+            escalation=escalation,
+            reason=request.reason,
         )
+    except EvidenceInsufficientError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    except EscalationRequiredError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error
+    except EscalationReasonRequiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
     except StaleQuoteError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return _decision_response(decision)

@@ -14,6 +14,7 @@ export function QuoteApprovalPanel({
 }) {
   const [review, setReview] = useState<QuoteReviewResponse>()
   const [decision, setDecision] = useState<QuoteDecisionResponse>()
+  const [reason, setReason] = useState('')
   const [error, setError] = useState('')
 
   async function openReview() {
@@ -25,11 +26,11 @@ export function QuoteApprovalPanel({
   async function decide(choice: 'approve' | 'reject') {
     if (!review) return
     try {
-      setDecision(await onDecide(review.id, choice, choice === 'reject' ? 'Customer declined' : undefined))
+      setDecision(await onDecide(review.id, choice, choice === 'reject' ? 'Customer declined' : reason || undefined))
       setError('')
     } catch {
       setDecision(undefined)
-      setError('Price, inventory, or slot inputs changed; the quote returned to review')
+      setError('Quote returned to review: inputs changed or a Manager decision is required')
     }
   }
 
@@ -48,7 +49,19 @@ export function QuoteApprovalPanel({
           <dd>{`${review.citations.rule_version} · page ${review.citations.citation_page}, ${review.citations.citation_section}`}</dd>
         </dl>
       )}
-      {review && (
+      {review?.evidence_blocked && <p role="alert">{`Not approvable by any role: ${review.blocking_reason}`}</p>}
+      {review?.escalation_required && !review.evidence_blocked && (
+        <div className="mt-3">
+          <p>{`Manager review required: ${review.escalation_reasons.join('; ')}`}</p>
+          <label htmlFor="escalation-reason">Manager reason</label>
+          <input
+            id="escalation-reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </div>
+      )}
+      {review && !review.evidence_blocked && (
         <div className="mt-3">
           <Button onClick={() => void decide('approve')}>Approve quote</Button>
           <Button className="ml-2" onClick={() => void decide('reject')}>

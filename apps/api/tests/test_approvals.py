@@ -10,6 +10,7 @@ from service_advisor_api.approvals import (
     QuoteFacts,
     StaleQuoteError,
 )
+from service_advisor_api.escalation import EscalationAssessment
 
 FACTS = QuoteFacts(
     service_codes=("HONDA-A1",),
@@ -34,16 +35,32 @@ def _open_review(store: QuoteCommandStore):
     )
 
 
-def _approve(store: QuoteCommandStore, review_id: str, *, key: str, fingerprint: str):
+NO_ESCALATION = EscalationAssessment(
+    required=False, reasons=(), evidence_blocked=False, blocking_reason=None
+)
+
+
+def _approve(
+    store: QuoteCommandStore,
+    review_id: str,
+    *,
+    key: str,
+    fingerprint: str,
+    role: str = "advisor",
+    escalation: EscalationAssessment = NO_ESCALATION,
+    reason: str | None = None,
+):
     return store.approve(
         review_id,
         shop_id="demo-shop",
         demo_session_id="session-1",
-        approver_role="advisor",
+        approver_role=role,
         approver_session_id="session-1",
         idempotency_key=key,
         current_facts=FACTS,
         current_fingerprint=fingerprint,
+        escalation=escalation,
+        reason=reason,
     )
 
 

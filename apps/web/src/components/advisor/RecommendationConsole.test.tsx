@@ -61,6 +61,10 @@ function renderConsole(overrides: Partial<Parameters<typeof RecommendationConsol
       },
       status: 'in_review',
       invalidation_reason: null,
+      escalation_required: false,
+      escalation_reasons: [],
+      evidence_blocked: false,
+      blocking_reason: null,
     }),
     onDecideReview: vi.fn().mockResolvedValue({
       id: 'decision-1',
@@ -83,6 +87,7 @@ function renderConsole(overrides: Partial<Parameters<typeof RecommendationConsol
         citation_page: 42,
         citation_section: 'Maintenance Minder',
       },
+      escalation_reasons: [],
     }),
     ...overrides,
   }
@@ -152,8 +157,76 @@ test('returns an invalidated quote to review', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Approve quote' }))
 
   expect(
-    await screen.findByText('Price, inventory, or slot inputs changed; the quote returned to review'),
+    await screen.findByText('Quote returned to review: inputs changed or a Manager decision is required'),
   ).toBeVisible()
+})
+
+test('routes an escalated quote to a Manager with a recorded reason', async () => {
+  const escalated = vi.fn().mockResolvedValue({
+    id: 'review-2',
+    vehicle_id: 'honda-civic-2019-lx',
+    approver_role: 'manager',
+    approver_session_id: 'session-2',
+    facts: {
+      service_codes: ['HONDA-A1'],
+      subtotal_mxn: '20000.00',
+      iva_mxn: '3200.00',
+      total_mxn: '23200.00',
+      duration_minutes: 50,
+      bay_slot_id: 'bay-2-afternoon',
+    },
+    citations: {
+      rule_version: 'honda-civic-2019-lx-v1',
+      citation_page: 42,
+      citation_section: 'Maintenance Minder',
+    },
+    status: 'in_review',
+    invalidation_reason: null,
+    escalation_required: true,
+    escalation_reasons: ['Quote total exceeds MXN 15,000.00'],
+    evidence_blocked: false,
+    blocking_reason: null,
+  })
+  renderConsole({ onOpenReview: escalated })
+  fireEvent.click(screen.getByRole('tab', { name: 'Approval' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open approval' }))
+
+  expect(await screen.findByText('Manager review required: Quote total exceeds MXN 15,000.00')).toBeVisible()
+  expect(screen.getByLabelText('Manager reason')).toBeVisible()
+})
+
+test('hides approval when evidence is insufficient for every role', async () => {
+  const blocked = vi.fn().mockResolvedValue({
+    id: 'review-3',
+    vehicle_id: 'honda-civic-2019-lx',
+    approver_role: 'manager',
+    approver_session_id: 'session-3',
+    facts: {
+      service_codes: ['HONDA-A1'],
+      subtotal_mxn: '0.00',
+      iva_mxn: '0.00',
+      total_mxn: '0.00',
+      duration_minutes: 0,
+      bay_slot_id: null,
+    },
+    citations: { rule_version: null, citation_page: null, citation_section: null },
+    status: 'in_review',
+    invalidation_reason: null,
+    escalation_required: true,
+    escalation_reasons: ['Reviewed evidence is missing or contradictory'],
+    evidence_blocked: true,
+    blocking_reason: 'Reviewed evidence is missing or contradictory',
+  })
+  renderConsole({ onOpenReview: blocked })
+  fireEvent.click(screen.getByRole('tab', { name: 'Approval' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open approval' }))
+
+  expect(
+    await screen.findByText('Not approvable by any role: Reviewed evidence is missing or contradictory'),
+  ).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Approve quote' })).toBeNull()
 })
 
 test('answers a contextual question from grounded evidence', async () => {

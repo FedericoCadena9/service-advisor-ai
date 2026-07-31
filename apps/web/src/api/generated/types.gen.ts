@@ -276,6 +276,10 @@ export type QuoteDecisionResponse = {
     reason: string | null;
     facts: QuoteFactsResponse;
     citations: QuoteCitationsResponse;
+    /**
+     * Escalation Reasons
+     */
+    escalation_reasons: Array<string>;
 };
 
 /**
@@ -424,6 +428,22 @@ export type QuoteReviewResponse = {
      * Invalidation Reason
      */
     invalidation_reason: string | null;
+    /**
+     * Escalation Required
+     */
+    escalation_required: boolean;
+    /**
+     * Escalation Reasons
+     */
+    escalation_reasons: Array<string>;
+    /**
+     * Evidence Blocked
+     */
+    evidence_blocked: boolean;
+    /**
+     * Blocking Reason
+     */
+    blocking_reason: string | null;
 };
 
 /**
@@ -1121,6 +1141,38 @@ export type GetQuoteReviewQuoteReviewsReviewIdGetResponses = {
 };
 
 export type GetQuoteReviewQuoteReviewsReviewIdGetResponse = GetQuoteReviewQuoteReviewsReviewIdGetResponses[keyof GetQuoteReviewQuoteReviewsReviewIdGetResponses];
+
+export type ListQuoteAuditQuoteAuditGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/quote-audit';
+};
+
+export type ListQuoteAuditQuoteAuditGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListQuoteAuditQuoteAuditGetError = ListQuoteAuditQuoteAuditGetErrors[keyof ListQuoteAuditQuoteAuditGetErrors];
+
+export type ListQuoteAuditQuoteAuditGetResponses = {
+    /**
+     * Response List Quote Audit Quote Audit Get
+     * Successful Response
+     */
+    200: Array<QuoteDecisionResponse>;
+};
+
+export type ListQuoteAuditQuoteAuditGetResponse = ListQuoteAuditQuoteAuditGetResponses[keyof ListQuoteAuditQuoteAuditGetResponses];
 
 export type DecideQuoteReviewQuoteReviewsReviewIdDecisionPostData = {
     body: QuoteDecisionRequest;

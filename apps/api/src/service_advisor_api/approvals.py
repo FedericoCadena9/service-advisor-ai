@@ -2,6 +2,12 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from uuid import uuid4
 
+from service_advisor_api.escalation import (
+    EscalationAssessment,
+    EscalationReasonRequiredError,
+    authorize_decision,
+)
+
 # Read-only retrieval the language model may call. Saving a quote is an application
 # command, never a model tool, so these registries must stay disjoint.
 LLM_TOOL_ALLOWLIST = (
@@ -61,6 +67,7 @@ class QuoteDecision:
     facts: QuoteFacts
     citations: QuoteCitations
     fingerprint: str
+    escalation_reasons: tuple[str, ...] = ()
 
 
 class QuoteCommandStore:
@@ -120,6 +127,8 @@ class QuoteCommandStore:
         idempotency_key: str,
         current_facts: QuoteFacts,
         current_fingerprint: str,
+        escalation: EscalationAssessment,
+        reason: str | None = None,
     ) -> QuoteDecision:
         review = self.get(review_id, shop_id, demo_session_id)
         if review.status == "rejected":
@@ -129,6 +138,9 @@ class QuoteCommandStore:
             raise StaleQuoteError(
                 "Price, inventory, or slot inputs changed; the quote returned to review"
             )
+        authorize_decision(escalation, approver_role)
+        if escalation.required and not (reason or "").strip():
+            raise EscalationReasonRequiredError("An escalated quote requires a recorded reason")
 
         existing = self._decision_for(review_id)
         if existing is not None and existing.fingerprint == review.fingerprint:
@@ -142,10 +154,11 @@ class QuoteCommandStore:
             decision="approved",
             approver_role=approver_role,
             approver_session_id=approver_session_id,
-            reason=None,
+            reason=reason,
             facts=review.facts,
             citations=review.citations,
             fingerprint=review.fingerprint,
+            escalation_reasons=escalation.reasons,
         )
         self._record(decision)
         self._idempotency[(review_id, idempotency_key)] = decision.id
@@ -161,6 +174,7 @@ class QuoteCommandStore:
         approver_role: str,
         approver_session_id: str,
         reason: str,
+        escalation_reasons: tuple[str, ...] = (),
     ) -> QuoteDecision:
         review = self.get(review_id, shop_id, demo_session_id)
         existing = self._decision_for(review_id)
@@ -177,6 +191,7 @@ class QuoteCommandStore:
             facts=review.facts,
             citations=review.citations,
             fingerprint=review.fingerprint,
+            escalation_reasons=escalation_reasons,
         )
         self._record(decision)
         self._reviews[review_id] = replace(review, status="rejected")
