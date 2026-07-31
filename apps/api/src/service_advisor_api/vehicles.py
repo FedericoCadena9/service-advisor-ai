@@ -71,6 +71,18 @@ class CanonicalVehicleStore:
             "demo-shop", "honda-accord-2020-sport", "Demo Fleet", 2020,
             "Honda", "Accord", "Sport", "1.5T", "FWD", "Mexico", 30400, "2026-06-22", 1,
         ),
+        (
+            "demo-shop", "toyota-corolla-2022-le", "Demo Fleet", 2022,
+            "Toyota", "Corolla", "LE", "2.0L", "FWD", "Mexico", 37800, "2026-06-24", 1,
+        ),
+        (
+            "demo-shop", "toyota-rav4-2021-xle", "Demo Fleet", 2021,
+            "Toyota", "RAV4", "XLE", "2.5L", "AWD", "Mexico", 45100, "2026-06-25", 1,
+        ),
+        (
+            "demo-shop", "toyota-tacoma-2020-sr5", "Demo Fleet", 2020,
+            "Toyota", "Tacoma", "SR5", "3.5L", "4WD", "Mexico", 46200, "2026-06-26", 1,
+        ),
     )
 
     def seed(self) -> None:

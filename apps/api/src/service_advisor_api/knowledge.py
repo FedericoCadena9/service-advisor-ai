@@ -10,6 +10,18 @@ class EvidenceUnavailableError(LookupError):
     """Raised when no reviewed rule covers this exact configuration and market."""
 
 
+class FallbackMarketEvidenceError(EvidenceUnavailableError):
+    """Raised when only a labeled fallback-market document exists for this configuration."""
+
+    def __init__(self, market: str, fallback_market: str) -> None:
+        super().__init__(
+            f"Only a {fallback_market} fallback document exists; it is not combined with "
+            f"{market} evidence without explicit review"
+        )
+        self.market = market
+        self.fallback_market = fallback_market
+
+
 @dataclass(frozen=True)
 class OfficialSource:
     market: str
@@ -130,7 +142,77 @@ HONDA_CONFIGURATIONS = (
     ),
 )
 
-REVIEWED_CONFIGURATIONS: tuple[ReviewedConfiguration, ...] = HONDA_CONFIGURATIONS
+TOYOTA_CONFIGURATIONS = (
+    ReviewedConfiguration(
+        make="Toyota",
+        model="Corolla",
+        engine="2.0L",
+        drivetrain="FWD",
+        market="Mexico",
+        source=_source(
+            market="Mexico",
+            text="Toyota Corolla Mexico maintenance schedule reviewed source",
+            retrieval_date="2026-07-30",
+            citation_page=18,
+            citation_section="Programa de servicio",
+        ),
+        rule=MaintenanceRule(
+            service_code="TOYOTA-10K",
+            version="toyota-corolla-2022-le-v1",
+            citation_page=18,
+            citation_section="Programa de servicio",
+            interval_km=40_000,
+        ),
+    ),
+    ReviewedConfiguration(
+        make="Toyota",
+        model="RAV4",
+        engine="2.5L",
+        drivetrain="AWD",
+        market="Mexico",
+        source=_source(
+            market="Mexico",
+            text="Toyota RAV4 Mexico maintenance schedule reviewed source",
+            retrieval_date="2026-07-30",
+            citation_page=24,
+            citation_section="Programa de servicio",
+        ),
+        rule=MaintenanceRule(
+            service_code="TOYOTA-20K",
+            version="toyota-rav4-2021-xle-v1",
+            citation_page=24,
+            citation_section="Programa de servicio",
+            interval_km=48_000,
+        ),
+    ),
+    # No Mexican document has been reviewed for the Tacoma; the US schedule stays labeled.
+    ReviewedConfiguration(
+        make="Toyota",
+        model="Tacoma",
+        engine="3.5L",
+        drivetrain="4WD",
+        market="United States",
+        source=_source(
+            market="United States",
+            text="Toyota Tacoma United States maintenance schedule reviewed source",
+            retrieval_date="2026-07-30",
+            citation_page=31,
+            citation_section="Maintenance Schedule",
+            fallback_market=True,
+        ),
+        rule=MaintenanceRule(
+            service_code="TOYOTA-30K",
+            version="toyota-tacoma-2020-sr5-us-v1",
+            citation_page=31,
+            citation_section="Maintenance Schedule",
+            interval_km=48_000,
+        ),
+    ),
+)
+
+REVIEWED_CONFIGURATIONS: tuple[ReviewedConfiguration, ...] = (
+    HONDA_CONFIGURATIONS + TOYOTA_CONFIGURATIONS
+)
 
 
 class KnowledgePack:
@@ -140,17 +222,32 @@ class KnowledgePack:
         return REVIEWED_CONFIGURATIONS
 
     def rule_for(
-        self, *, make: str, model: str, engine: str, drivetrain: str, market: str
+        self,
+        *,
+        make: str,
+        model: str,
+        engine: str,
+        drivetrain: str,
+        market: str,
+        allow_fallback_market: bool = False,
     ) -> tuple[OfficialSource, MaintenanceRule]:
-        for configuration in REVIEWED_CONFIGURATIONS:
-            if (
-                configuration.make,
-                configuration.model,
-                configuration.engine,
-                configuration.drivetrain,
-                configuration.market,
-            ) == (make, model, engine, drivetrain, market):
+        candidates = [
+            configuration
+            for configuration in REVIEWED_CONFIGURATIONS
+            if (configuration.make, configuration.model, configuration.engine, configuration.drivetrain)
+            == (make, model, engine, drivetrain)
+        ]
+        for configuration in candidates:
+            if configuration.market == market and not configuration.source.fallback_market:
                 return configuration.source, configuration.rule
+        fallback = next(
+            (configuration for configuration in candidates if configuration.source.fallback_market),
+            None,
+        )
+        if fallback is not None:
+            if allow_fallback_market:
+                return fallback.source, fallback.rule
+            raise FallbackMarketEvidenceError(market, fallback.source.market)
         raise EvidenceUnavailableError(
             f"No reviewed rule covers {make} {model} {engine} {drivetrain} in {market}"
         )

@@ -1271,7 +1271,12 @@ export type GetRecommendationVehiclesVehicleIdRecommendationGetData = {
          */
         vehicle_id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Allow Fallback Market
+         */
+        allow_fallback_market?: boolean;
+    };
     url: '/vehicles/{vehicle_id}/recommendation';
 };
 

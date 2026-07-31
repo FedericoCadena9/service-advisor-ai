@@ -42,6 +42,7 @@ def evaluate_maintenance(
     drivetrain: str,
     market: str,
     evidence_available: bool = True,
+    allow_fallback_market: bool = False,
     completed_services: tuple[ServiceRecord, ...] = (),
     declined_services: tuple[ServiceRecord, ...] = (),
 ) -> Recommendation:
@@ -49,20 +50,30 @@ def evaluate_maintenance(
     del checked_in_on
     try:
         source, rule = KnowledgePack().rule_for(
-            make=make, model=model, engine=engine, drivetrain=drivetrain, market=market
+            make=make,
+            model=model,
+            engine=engine,
+            drivetrain=drivetrain,
+            market=market,
+            allow_fallback_market=allow_fallback_market,
         )
     except EvidenceUnavailableError as error:
         return _insufficient(str(error))
     if not evidence_available or source.review_state != "reviewed":
         return _insufficient("Reviewed evidence is unavailable")
+    warnings = (
+        (f"Evidence comes from the labeled {source.market} fallback market",)
+        if source.fallback_market
+        else ()
+    )
 
     relevant_declines = tuple(
         record.id for record in declined_services if record.service_code == rule.service_code
     )
     if any(record.service_code == rule.service_code for record in completed_services):
-        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", (), relevant_declines)
+        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines)
     if relevant_declines:
-        return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", (), relevant_declines)
+        return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines)
 
     state, reason = _due_state(current_mileage_km, rule)
     actionable = state != "informational"
@@ -71,7 +82,7 @@ def evaluate_maintenance(
         rule_version=rule.version if actionable else None, due_reason=reason,
         citation_page=rule.citation_page if actionable else None,
         citation_section=rule.citation_section if actionable else None,
-        confidence="high" if actionable else "informational", warnings=(),
+        confidence="high" if actionable else "informational", warnings=warnings,
     )
 
 

@@ -577,7 +577,12 @@ def get_checkin(
 
 
 def _evaluate_for_vehicle(
-    claims: SessionClaims, vehicle: CanonicalVehicle, current_mileage_km: int, checked_in_on: str
+    claims: SessionClaims,
+    vehicle: CanonicalVehicle,
+    current_mileage_km: int,
+    checked_in_on: str,
+    *,
+    allow_fallback_market: bool = False,
 ) -> Recommendation:
     """Retrieve evidence for this exact configuration and market, never a neighbouring one."""
     return evaluate_maintenance(
@@ -588,6 +593,7 @@ def _evaluate_for_vehicle(
         engine=vehicle.engine,
         drivetrain=vehicle.drivetrain,
         market=vehicle.market,
+        allow_fallback_market=allow_fallback_market,
         completed_services=service_history_store.completed(claims.shop_id, vehicle.id),
         declined_services=service_history_store.declined(claims.shop_id, vehicle.id),
     )
@@ -597,6 +603,7 @@ def _evaluate_for_vehicle(
 def get_recommendation(
     vehicle_id: str,
     claims: Annotated[SessionClaims, Depends(current_session)],
+    allow_fallback_market: bool = False,
 ) -> RecommendationResponse:
     vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
     if vehicle is None:
@@ -604,7 +611,13 @@ def get_recommendation(
     checkin = checkin_store.get(shop_id=claims.shop_id, demo_session_id=claims.demo_session_id, vehicle_id=vehicle_id)
     if checkin is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Confirm a check-in before requesting recommendations")
-    recommendation = _evaluate_for_vehicle(claims, vehicle, checkin.current_mileage_km, checkin.checked_in_on)
+    recommendation = _evaluate_for_vehicle(
+        claims,
+        vehicle,
+        checkin.current_mileage_km,
+        checkin.checked_in_on,
+        allow_fallback_market=allow_fallback_market,
+    )
     return RecommendationResponse(
         state=recommendation.state,
         actionable=recommendation.actionable,
