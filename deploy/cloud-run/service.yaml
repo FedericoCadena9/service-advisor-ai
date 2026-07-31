@@ -1,0 +1,53 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: service-advisor-api
+  labels:
+    cloud.googleapis.com/location: us-central1
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when the public demo is idle, and cap the blast radius when it is not.
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "4"
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 40
+      timeoutSeconds: 60
+      serviceAccountName: service-advisor-api@service-advisor-demo.iam.gserviceaccount.com
+      containers:
+        - image: gcr.io/service-advisor-demo/service-advisor-api:latest
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: DEMO_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: demo-session-secret
+                  key: latest
+            - name: INSFORGE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: insforge-database-url
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+            failureThreshold: 10
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+            periodSeconds: 30
+abuseControls:
+  # Applied through Cloud Armor in front of the Cloud Run service.
+  requestsPerMinutePerIp: 60
+  burstRequestsPerIp: 20
+  maxRequestBodyBytes: 65536
+  bannedDurationSeconds: 300

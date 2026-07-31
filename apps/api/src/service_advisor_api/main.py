@@ -69,6 +69,13 @@ from service_advisor_api.recommendations import (
     evaluate_civic_maintenance,
     evaluate_maintenance,
 )
+from service_advisor_api.release import (
+    ReleaseGateError,
+    qualify_release,
+    release_gates,
+    release_manifest,
+    validate_migration,
+)
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.text_to_sql import (
     QueryTimeoutError,
@@ -98,6 +105,28 @@ from service_advisor_api.workflows import AdvisorRun, AdvisorWorkflowStore
 
 class HealthResponse(BaseModel):
     status: Literal["healthy"]
+
+
+class ReleaseManifestResponse(BaseModel):
+    release_version: str
+    model_version: str
+    prompt_version: str
+    dataset_version: str
+    rule_versions: list[str]
+
+
+class GateResultResponse(BaseModel):
+    name: str
+    passed: bool
+    detail: str
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ready", "waking"]
+    cold_start: bool
+    manifest: ReleaseManifestResponse
+    gates: list[GateResultResponse]
+    migration_steps: list[str]
 
 
 class CreateDemoSessionRequest(BaseModel):
@@ -400,6 +429,7 @@ semantic_gateway = SemanticQueryGateway()
 semantic_gateway.seed()
 voice_note_store = VoiceNoteStore()
 trace_recorder = TraceRecorder()
+_served_first_request = False
 DEMO_MODEL = "deterministic-demo"
 PROVIDER_CALL_COST_MXN = Decimal("0.0125")
 SPAN_LATENCY_MS = 12.0
@@ -435,6 +465,50 @@ app.add_middleware(
 @app.get("/health", response_model=HealthResponse)
 def get_health() -> HealthResponse:
     return HealthResponse(status="healthy")
+
+
+@app.get("/release", response_model=ReleaseManifestResponse)
+def get_release_manifest() -> ReleaseManifestResponse:
+    manifest = release_manifest()
+    return ReleaseManifestResponse(
+        release_version=manifest.release_version,
+        model_version=manifest.model_version,
+        prompt_version=manifest.prompt_version,
+        dataset_version=manifest.dataset_version,
+        rule_versions=list(manifest.rule_versions),
+    )
+
+
+@app.get("/readiness", response_model=ReadinessResponse)
+def get_readiness(
+    smoke_ok: bool = True,
+    live_model_promotion_approved: bool = False,
+) -> ReadinessResponse:
+    """Cold-start aware readiness: the first request after scale-to-zero reports waking."""
+    global _served_first_request
+    cold_start = not _served_first_request
+    _served_first_request = True
+    gates = release_gates(
+        health_ok=True,
+        smoke_ok=smoke_ok,
+        evaluation=run_suite(),
+        live_model_promotion_approved=live_model_promotion_approved,
+    )
+    try:
+        qualify_release(gates)
+        status_value: Literal["ready", "waking"] = "waking" if cold_start else "ready"
+    except ReleaseGateError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
+        ) from error
+    manifest = get_release_manifest()
+    return ReadinessResponse(
+        status=status_value,
+        cold_start=cold_start,
+        manifest=manifest,
+        gates=[GateResultResponse(**gate.__dict__) for gate in gates],
+        migration_steps=[step.name for step in validate_migration()],
+    )
 
 
 @app.post("/demo-sessions", response_model=DemoSessionResponse, status_code=status.HTTP_201_CREATED)

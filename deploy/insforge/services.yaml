@@ -1,0 +1,36 @@
+# InsForge managed services for the public demo, each with a least-privilege credential.
+project: service-advisor-demo
+region: us-central1
+services:
+  auth:
+    enabled: true
+    role: demo_auth_client
+    permissions:
+      - issue_demo_session
+      - verify_demo_session
+  postgres:
+    enabled: true
+    role: advisor_app
+    permissions:
+      - select
+      - insert
+      - update
+    connection_pool: 5
+  pgvector:
+    enabled: true
+    role: semantic_reader
+    permissions:
+      - select
+    notes: Read-only principal used by the Text-to-SQL semantic views and evidence retrieval.
+  storage:
+    enabled: true
+    role: voice_note_writer
+    permissions:
+      - put_object
+      - delete_object
+    retention_hours: 24
+  realtime:
+    enabled: true
+    role: advisor_run_subscriber
+    permissions:
+      - subscribe

@@ -27,11 +27,22 @@ test('shows the healthy demo environment state', async () => {
 })
 
 test('shows the unavailable demo environment state', async () => {
-  vi.mocked(fetchHealth).mockRejectedValueOnce(new Error('offline'))
+  vi.mocked(fetchHealth)
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockRejectedValueOnce(new Error('offline'))
 
   render(<App />)
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Demo environment unavailable')
+  expect(await screen.findByText('Demo environment unavailable')).toBeVisible()
+})
+
+test('reports cold-start progress while the demo wakes from scale to zero', async () => {
+  vi.mocked(fetchHealth).mockRejectedValueOnce(new Error('cold start'))
+
+  render(<App />)
+
+  expect(await screen.findByText('Waking the demo environment after scale to zero')).toBeVisible()
+  expect(await screen.findByText('Demo environment healthy')).toBeVisible()
 })
 
 test('lets a visitor choose the Advisor role before entering the workspace', async () => {

@@ -23,7 +23,9 @@ import { confirmTranscript, recordVoiceNote } from './api/voice'
 import { VoiceCheckinPanel } from './components/advisor/VoiceCheckinPanel'
 import { RecommendationConsole } from './components/advisor/RecommendationConsole'
 
-type HealthState = 'loading' | 'healthy' | 'unavailable'
+type HealthState = 'loading' | 'waking' | 'healthy' | 'unavailable'
+
+const COLD_START_RETRY_MS = 400
 
 export default function App() {
   const [state, setState] = useState<HealthState>('loading')
@@ -48,17 +50,39 @@ export default function App() {
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchHealth()
-      .then(() => setState('healthy'))
-      .catch(() => setState('unavailable'))
+    let cancelled = false
+
+    // The public demo scales to zero, so the first probe may hit a cold start.
+    async function probeHealth() {
+      try {
+        await fetchHealth()
+        if (!cancelled) setState('healthy')
+      } catch {
+        if (cancelled) return
+        setState('waking')
+        await new Promise((resolve) => setTimeout(resolve, COLD_START_RETRY_MS))
+        if (cancelled) return
+        try {
+          await fetchHealth()
+          if (!cancelled) setState('healthy')
+        } catch {
+          if (!cancelled) setState('unavailable')
+        }
+      }
+    }
+
+    void probeHealth()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const message =
-    state === 'healthy'
-      ? 'Demo environment healthy'
-      : state === 'unavailable'
-        ? 'Demo environment unavailable'
-        : 'Checking demo environment'
+  const message = {
+    healthy: 'Demo environment healthy',
+    unavailable: 'Demo environment unavailable',
+    waking: 'Waking the demo environment after scale to zero',
+    loading: 'Checking demo environment',
+  }[state]
 
   async function chooseRole(role: CreateDemoSessionRequest['role']) {
     setSessionError(null)

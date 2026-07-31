@@ -281,6 +281,24 @@ export type ExplanationResponse = {
 };
 
 /**
+ * GateResultResponse
+ */
+export type GateResultResponse = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Passed
+     */
+    passed: boolean;
+    /**
+     * Detail
+     */
+    detail: string;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -541,6 +559,29 @@ export type QuoteReviewResponse = {
 };
 
 /**
+ * ReadinessResponse
+ */
+export type ReadinessResponse = {
+    /**
+     * Status
+     */
+    status: 'ready' | 'waking';
+    /**
+     * Cold Start
+     */
+    cold_start: boolean;
+    manifest: ReleaseManifestResponse;
+    /**
+     * Gates
+     */
+    gates: Array<GateResultResponse>;
+    /**
+     * Migration Steps
+     */
+    migration_steps: Array<string>;
+};
+
+/**
  * RecommendationResponse
  */
 export type RecommendationResponse = {
@@ -584,6 +625,32 @@ export type RecommendationResponse = {
      * Declined Service Ids
      */
     declined_service_ids: Array<string>;
+};
+
+/**
+ * ReleaseManifestResponse
+ */
+export type ReleaseManifestResponse = {
+    /**
+     * Release Version
+     */
+    release_version: string;
+    /**
+     * Model Version
+     */
+    model_version: string;
+    /**
+     * Prompt Version
+     */
+    prompt_version: string;
+    /**
+     * Dataset Version
+     */
+    dataset_version: string;
+    /**
+     * Rule Versions
+     */
+    rule_versions: Array<string>;
 };
 
 /**
@@ -970,6 +1037,56 @@ export type GetHealthHealthGetResponses = {
 };
 
 export type GetHealthHealthGetResponse = GetHealthHealthGetResponses[keyof GetHealthHealthGetResponses];
+
+export type GetReleaseManifestReleaseGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/release';
+};
+
+export type GetReleaseManifestReleaseGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReleaseManifestResponse;
+};
+
+export type GetReleaseManifestReleaseGetResponse = GetReleaseManifestReleaseGetResponses[keyof GetReleaseManifestReleaseGetResponses];
+
+export type GetReadinessReadinessGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Smoke Ok
+         */
+        smoke_ok?: boolean;
+        /**
+         * Live Model Promotion Approved
+         */
+        live_model_promotion_approved?: boolean;
+    };
+    url: '/readiness';
+};
+
+export type GetReadinessReadinessGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetReadinessReadinessGetError = GetReadinessReadinessGetErrors[keyof GetReadinessReadinessGetErrors];
+
+export type GetReadinessReadinessGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReadinessResponse;
+};
+
+export type GetReadinessReadinessGetResponse = GetReadinessReadinessGetResponses[keyof GetReadinessReadinessGetResponses];
 
 export type CreateSessionDemoSessionsPostData = {
     body: CreateDemoSessionRequest;
