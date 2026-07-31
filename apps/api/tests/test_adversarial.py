@@ -17,6 +17,7 @@ from service_advisor_api.observability import REDACTED, redact_attributes
 from service_advisor_api.operations import PartAvailability
 from service_advisor_api.quotes import draft_quote
 from service_advisor_api.text_to_sql import (
+    QueryFailedError,
     SemanticQueryGateway,
     UnsafeSqlError,
     validate_sql,
@@ -374,3 +375,112 @@ def test_a_replayed_idempotency_key_returns_the_stored_decision() -> None:
 
     assert replay.id == first.id
     assert replay.quote_id == first.quote_id
+
+
+# Third round: what the second-round fixes themselves broke.
+
+
+def test_a_replayed_key_never_returns_a_superseded_approval() -> None:
+    """What if the key is replayed after the price moved and a new quote was approved?"""
+    store, review_id = _store_with_review()
+    superseded = _approve(store, review_id, idempotency_key="key-a")
+    repriced = QuoteFacts(**{**FACTS.__dict__, "total_mxn": Decimal("10440.00")})
+    store.revalidate(review_id, repriced, "fingerprint-b")
+    current = _approve(
+        store,
+        review_id,
+        idempotency_key="key-b",
+        current_facts=repriced,
+        current_fingerprint="fingerprint-b",
+    )
+
+    replay = _approve(store, review_id, idempotency_key="key-a", current_fingerprint="fingerprint-b")
+
+    assert replay.quote_id != superseded.quote_id
+    assert replay.quote_id == current.quote_id
+    assert replay.facts.total_mxn == Decimal("10440.00")
+    assert store.get(review_id, shop_id="demo-shop", demo_session_id="session-1").status == (
+        "approved"
+    )
+
+
+def test_an_unknown_replayed_key_does_not_crash() -> None:
+    """What if the key map points at a decision the audit no longer holds?"""
+    store, review_id = _store_with_review()
+    _approve(store, review_id, idempotency_key="key-a")
+    store._idempotency[(review_id, "key-a")] = "missing-decision"
+
+    replay = _approve(store, review_id, idempotency_key="key-a")
+
+    assert replay.quote_id is not None
+
+
+def test_a_caret_cannot_be_appended_to_an_approved_message() -> None:
+    """What if the edit is a symbol the character class let through by accident?"""
+    approved = compose_sms(**APPROVED_SMS).text
+
+    with pytest.raises(InventedContentError):
+        validate_sms(approved + " ^^^^^^", **APPROVED_SMS)
+
+
+def test_an_ordinary_spanish_courtesy_edit_is_allowed() -> None:
+    """What if the Advisor adds a normal closing line instead of inventing facts?"""
+    approved = compose_sms(**APPROVED_SMS).text
+
+    for edit in (
+        " Gracias por su preferencia.",
+        " Si necesita cambiar la cita, responda a este mensaje.",
+        " Su taller de confianza.",
+    ):
+        assert validate_sms(approved + edit, **APPROVED_SMS) >= 1
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        " Es urgente.",
+        " Revise los frenos.",
+        " Su motor esta danado.",
+    ],
+    ids=["urgency", "invented-service", "invented-diagnosis"],
+)
+def test_a_wider_courtesy_vocabulary_still_refuses_meaning(edit: str) -> None:
+    approved = compose_sms(**APPROVED_SMS).text
+
+    with pytest.raises(InventedContentError):
+        validate_sms(approved + edit, **APPROVED_SMS)
+
+
+def test_a_malformed_query_is_not_reported_as_a_security_refusal() -> None:
+    """What if the query is merely ambiguous instead of unsafe?"""
+    gateway = SemanticQueryGateway()
+    gateway.seed()
+
+    with pytest.raises(QueryFailedError):
+        gateway.execute(
+            validate_sql("SELECT vehicle_id FROM v_service_history, v_quote_totals"),
+            "demo-shop",
+        )
+
+
+def test_every_emitted_span_attribute_survives_the_allowlist() -> None:
+    """What if a future span adds a key nobody put on the allowlist?"""
+    import ast
+    from pathlib import Path
+
+    from service_advisor_api.observability import ALLOWED_ATTRIBUTES
+
+    source = ast.parse(Path(__file__).resolve().parents[1].joinpath(
+        "src/service_advisor_api/main.py"
+    ).read_text())
+    emitted = {
+        key.value
+        for node in ast.walk(source)
+        if isinstance(node, ast.keyword) and node.arg == "attributes"
+        if isinstance(node.value, ast.Dict)
+        for key in node.value.keys
+        if isinstance(key, ast.Constant)
+    }
+
+    assert emitted
+    assert emitted <= ALLOWED_ATTRIBUTES

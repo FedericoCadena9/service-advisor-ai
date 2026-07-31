@@ -88,6 +88,7 @@ class QuoteCommandStore:
         self._decisions: dict[str, QuoteDecision] = {}
         self._audit: list[QuoteDecision] = []
         self._idempotency: dict[tuple[str, str], str] = {}
+        self._by_id: dict[str, QuoteDecision] = {}
 
     def open_review(
         self,
@@ -166,7 +167,11 @@ class QuoteCommandStore:
 
             replayed = self._idempotency.get((review_id, idempotency_key))
             if replayed is not None:
-                return next(entry for entry in self._audit if entry.id == replayed)
+                stored = self._by_id.get(replayed)
+                # Only replay a decision the review still stands behind; a superseded one
+                # would answer with a stale total.
+                if stored is not None and stored.fingerprint == review.fingerprint:
+                    return stored
             existing = self._decision_for(review_id)
             if existing is not None and existing.fingerprint == review.fingerprint:
                 self._idempotency[(review_id, idempotency_key)] = existing.id
@@ -268,6 +273,7 @@ class QuoteCommandStore:
 
     def _record(self, decision: QuoteDecision) -> None:
         self._decisions[decision.review_id] = decision
+        self._by_id[decision.id] = decision
         self._audit.append(decision)
 
     def _invalidate(

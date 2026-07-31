@@ -14,7 +14,12 @@ MAX_PRIORITIES = 3
 CONFIRMATION = "¿Confirma la cita?"
 # Everything an edited message may say beyond the approved facts and service labels.
 CONNECTIVE_VOCABULARY = frozenset(
-    {"su", "servicio", "incluye", "y", "e", "total", "cita", "gracias", "por", "favor"}
+    {
+        "su", "servicio", "incluye", "y", "e", "o", "total", "cita", "gracias", "por",
+        "favor", "preferencia", "taller", "de", "confianza", "si", "necesita", "cambiar",
+        "la", "el", "un", "una", "responda", "a", "este", "mensaje", "para", "confirmar",
+        "atentamente", "quedamos", "atentos", "buen", "dia", "estamos", "aqui",
+    }
 )
 SERVICE_LABELS = {
     "HONDA-A1": "cambio de aceite y filtro",
@@ -26,7 +31,7 @@ SERVICE_LABELS = {
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 # Outside the approved facts and labels a message may only hold words and plain punctuation:
 # a digit, symbol or emoji is how a second price, a phone number or urgency gets smuggled in.
-_UNSUPPORTED_CHARACTER = re.compile(r"[^^\w\s,.]|\d|_", re.UNICODE)
+_UNSUPPORTED_CHARACTER = re.compile(r"[^\w\s,.]|\d|_", re.UNICODE)
 
 
 class InventedContentError(ValueError):

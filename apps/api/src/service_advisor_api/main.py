@@ -77,6 +77,7 @@ from service_advisor_api.release import (
 )
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.text_to_sql import (
+    QueryFailedError,
     QueryTimeoutError,
     SemanticQueryGateway,
     UnsafeSqlError,
@@ -1451,6 +1452,10 @@ def answer_service_question(
         ) from error
     except UnsafeSqlError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    except QueryFailedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
     except QueryTimeoutError as error:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(error)

@@ -40,6 +40,10 @@ class UnsupportedQuestionError(ValueError):
     """Raised when a question has no supported semantic query."""
 
 
+class QueryFailedError(RuntimeError):
+    """Raised when an accepted query is malformed: a caller error, not a security refusal."""
+
+
 class QueryTimeoutError(RuntimeError):
     """Raised when a query exceeds the strict timeout."""
 
@@ -209,7 +213,7 @@ class SemanticQueryGateway:
             except sqlite3.OperationalError as error:
                 if "interrupted" in str(error):
                     raise QueryTimeoutError("The query exceeded the strict timeout") from error
-                raise UnsafeSqlError(str(error)) from error
+                raise QueryFailedError(str(error)) from error
             finally:
                 self._connection.set_progress_handler(None, 0)
                 self._shop_id = ""
