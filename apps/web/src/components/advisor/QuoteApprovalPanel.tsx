@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { QuoteDecisionResponse, QuoteReviewResponse } from '../../api/generated/types.gen'
 
-const BUNDLE = ['HONDA-A1']
+const APPROVAL_BUNDLE = ['HONDA-A1']
 
 export function QuoteApprovalPanel({
   onOpenReview,
@@ -22,7 +22,7 @@ export function QuoteApprovalPanel({
   async function openReview() {
     setDecision(undefined)
     setError('')
-    setReview(await onOpenReview(BUNDLE))
+    setReview(await onOpenReview(APPROVAL_BUNDLE))
   }
 
   async function decide(choice: 'approve' | 'reject') {

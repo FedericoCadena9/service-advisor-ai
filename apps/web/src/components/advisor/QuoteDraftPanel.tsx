@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { QuoteDraftResponse } from '../../api/generated/types.gen'
 
-const BUNDLE = ['HONDA-A1', 'HONDA-TIRE-ROTATION', 'HONDA-CABIN-FILTER']
+const DRAFT_BUNDLE = ['HONDA-A1', 'HONDA-TIRE-ROTATION', 'HONDA-CABIN-FILTER']
 
 export function QuoteDraftPanel({ onDraft }: { onDraft: (serviceCodes: string[]) => Promise<QuoteDraftResponse> }) {
   const [draft, setDraft] = useState<QuoteDraftResponse>()
@@ -11,7 +11,7 @@ export function QuoteDraftPanel({ onDraft }: { onDraft: (serviceCodes: string[])
 
   async function requestDraft() {
     try {
-      setDraft(await onDraft(BUNDLE))
+      setDraft(await onDraft(DRAFT_BUNDLE))
       setError('')
     } catch {
       setError('Quote draft unavailable')

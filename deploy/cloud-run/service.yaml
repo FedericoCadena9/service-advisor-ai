@@ -45,9 +45,3 @@ spec:
             httpGet:
               path: /health
             periodSeconds: 30
-abuseControls:
-  # Applied through Cloud Armor in front of the Cloud Run service.
-  requestsPerMinutePerIp: 60
-  burstRequestsPerIp: 20
-  maxRequestBodyBytes: 65536
-  bannedDurationSeconds: 300

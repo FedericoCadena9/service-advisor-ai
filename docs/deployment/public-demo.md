@@ -16,9 +16,10 @@ InsForge. Everything scales to zero when the demo is idle.
    The definition pins the agreed settings: `minScale: 0` (scale to zero),
    `maxScale: 4`, `containerConcurrency: 40`, 512Mi memory, a 60 second request timeout,
    CPU throttling with startup boost, and a `/health` startup probe.
-3. **Abuse controls** — the `abuseControls` block in the same file is applied through Cloud
-   Armor: 60 requests per minute per IP, a burst of 20, a 64 KiB body cap, and a 300 second
-   ban for offenders.
+3. **Abuse controls** — apply `deploy/cloud-run/cloud-armor.yaml` as the Cloud Armor policy
+   in front of the service: 60 requests per minute per IP, a burst of 20, a 64 KiB body cap,
+   and a 300 second ban for offenders. It is a separate file because a Knative Service
+   manifest rejects unknown top-level fields.
 4. **InsForge** — apply `deploy/insforge/services.yaml`. Each service gets its own
    least-privilege credential: `demo_auth_client` for authentication, `advisor_app` for
    PostgreSQL writes, the read-only `semantic_reader` for pgvector and the semantic views,
@@ -68,6 +69,7 @@ running revision.
 
 Promotion to live-model answers is never automatic. Replay the canonical 100 cases against
 the live model, confirm the unsafe-SQL and prompt-injection blocking stay at 100 percent
-and the overall score stays at or above 0.95, then call
-`GET /readiness?live_model_promotion_approved=true` and record the reviewer with the
-release manifest.
+and the overall score stays at or above 0.95, then set `LIVE_MODEL_PROMOTION_APPROVED=true` on the
+Cloud Run revision and record the reviewer with the release manifest. The gate is read from
+the deployment environment, never from a query string, so a public visitor cannot flip it.
+The smoke gate reads `SMOKE_CHECK_PASSED` the same way.

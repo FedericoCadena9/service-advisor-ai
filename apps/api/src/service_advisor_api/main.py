@@ -1,3 +1,5 @@
+import os
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, NamedTuple
 
@@ -8,6 +10,7 @@ from pydantic import BaseModel
 
 from service_advisor_api.appointments import Appointment, AppointmentStore
 from service_advisor_api.approvals import (
+    AlreadyDecidedError,
     QuoteCitations,
     QuoteCommandStore,
     QuoteDecision,
@@ -64,11 +67,7 @@ from service_advisor_api.quotes import (
     fingerprint,
     required_part_numbers,
 )
-from service_advisor_api.recommendations import (
-    Recommendation,
-    evaluate_civic_maintenance,
-    evaluate_maintenance,
-)
+from service_advisor_api.recommendations import Recommendation, evaluate_maintenance
 from service_advisor_api.release import (
     ReleaseGateError,
     qualify_release,
@@ -227,6 +226,7 @@ class AdvisorDecisionRequest(BaseModel):
 
 
 class ExplanationRequest(BaseModel):
+    vehicle_id: str
     current_mileage_km: int
     evidence_available: bool
 
@@ -240,6 +240,7 @@ class ExplanationResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
+    vehicle_id: str
     current_mileage_km: int
     provider_available: bool
 
@@ -293,6 +294,7 @@ class QuoteReviewResponse(BaseModel):
     facts: QuoteFactsResponse
     citations: QuoteCitationsResponse
     status: str
+    expires_at: str
     invalidation_reason: str | None
     escalation_required: bool
     escalation_reasons: list[str]
@@ -392,6 +394,52 @@ class EvaluationReportResponse(BaseModel):
     failing_case_ids: list[str]
 
 
+class SpanResponse(BaseModel):
+    span_id: str
+    parent_span_id: str | None
+    name: str
+    kind: str
+    latency_ms: float
+    cost_mxn: str
+    attributes: dict[str, object]
+
+
+class TraceVersionsResponse(BaseModel):
+    rule_version: str | None
+    prompt_version: str
+    dataset_version: str
+    model: str
+
+
+class TraceResponse(BaseModel):
+    trace_id: str
+    versions: TraceVersionsResponse
+    spans: list[SpanResponse]
+
+
+class DashboardResponse(BaseModel):
+    trace_count: int
+    span_count: int
+    spans_by_kind: dict[str, int]
+    citation_rate: float
+    p50_latency_ms: float
+    p95_latency_ms: float
+    total_cost_mxn: str
+    escalation_outcomes: dict[str, int]
+    evaluation_thresholds_met: bool
+    evaluation_score: float
+
+
+class VoiceTraceResponse(BaseModel):
+    voice_note_id: str
+    language: Language
+    duration_seconds: float
+    state: str
+    segment_count: int
+    transcript_character_count: int
+    audio_retained: bool
+
+
 class ServiceQuestionRequest(BaseModel):
     question: str
 
@@ -431,6 +479,13 @@ voice_note_store = VoiceNoteStore()
 trace_recorder = TraceRecorder()
 _served_first_request = False
 DEMO_MODEL = "deterministic-demo"
+
+
+def _environment_flag(name: str, *, default: bool) -> bool:
+    raw = os.environ.get(name)
+    return default if raw is None else raw.strip().lower() in ("1", "true", "yes")
+
+
 PROVIDER_CALL_COST_MXN = Decimal("0.0125")
 SPAN_LATENCY_MS = 12.0
 
@@ -480,19 +535,22 @@ def get_release_manifest() -> ReleaseManifestResponse:
 
 
 @app.get("/readiness", response_model=ReadinessResponse)
-def get_readiness(
-    smoke_ok: bool = True,
-    live_model_promotion_approved: bool = False,
-) -> ReadinessResponse:
-    """Cold-start aware readiness: the first request after scale-to-zero reports waking."""
+def get_readiness() -> ReadinessResponse:
+    """Cold-start aware readiness: the first request after scale-to-zero reports waking.
+
+    Gate outcomes come from the deployment environment, never from the caller, so a public
+    visitor cannot flip the smoke or live-model gates from a query string.
+    """
     global _served_first_request
     cold_start = not _served_first_request
     _served_first_request = True
     gates = release_gates(
         health_ok=True,
-        smoke_ok=smoke_ok,
+        smoke_ok=_environment_flag("SMOKE_CHECK_PASSED", default=True),
         evaluation=run_suite(),
-        live_model_promotion_approved=live_model_promotion_approved,
+        live_model_promotion_approved=_environment_flag(
+            "LIVE_MODEL_PROMOTION_APPROVED", default=False
+        ),
     )
     try:
         qualify_release(gates)
@@ -884,7 +942,7 @@ def _quote_context(
     )
 
 
-def _assess(context: QuoteContext, invalidation_reason: str | None) -> EscalationAssessment:
+def _assess_escalation(context: QuoteContext, invalidation_reason: str | None) -> EscalationAssessment:
     return assess_escalation(
         total_mxn=context.facts.total_mxn,
         rule_version=context.citations.rule_version,
@@ -917,6 +975,7 @@ def _review_response(
         facts=_facts_response(review.facts),
         citations=QuoteCitationsResponse(**review.citations.__dict__),
         status=review.status,
+        expires_at=review.expires_at,
         invalidation_reason=review.invalidation_reason,
         escalation_required=escalation.required,
         escalation_reasons=list(escalation.reasons),
@@ -942,7 +1001,7 @@ def _decision_response(decision: QuoteDecision) -> QuoteDecisionResponse:
 
 def _load_review(review_id: str, claims: SessionClaims) -> QuoteReview:
     try:
-        return quote_command_store.get(review_id, claims.shop_id, claims.demo_session_id)
+        return quote_command_store.get(review_id, shop_id=claims.shop_id, demo_session_id=claims.demo_session_id)
     except (KeyError, PermissionError) as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Quote review not found"
@@ -968,7 +1027,7 @@ def open_quote_review(
         citations=context.citations,
         fingerprint=context.fingerprint,
     )
-    return _review_response(review, claims, _assess(context, review.invalidation_reason))
+    return _review_response(review, claims, _assess_escalation(context, review.invalidation_reason))
 
 
 @app.get("/quote-reviews/{review_id}", response_model=QuoteReviewResponse)
@@ -980,7 +1039,7 @@ def get_quote_review(
     context = _quote_context(claims, review.vehicle_id, list(review.facts.service_codes))
     revalidated = quote_command_store.revalidate(review.id, context.facts, context.fingerprint)
     return _review_response(
-        revalidated, claims, _assess(context, revalidated.invalidation_reason)
+        revalidated, claims, _assess_escalation(context, revalidated.invalidation_reason)
     )
 
 
@@ -988,10 +1047,7 @@ def get_quote_review(
 def list_quote_audit(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> list[QuoteDecisionResponse]:
-    if claims.role not in ("manager", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Manager role is required"
-        )
+    _require_manager(claims)
     return [_decision_response(decision) for decision in quote_command_store.audit_trail(claims.shop_id)]
 
 
@@ -1004,24 +1060,29 @@ def decide_quote_review(
 ) -> QuoteDecisionResponse:
     review = _load_review(review_id, claims)
     context = _quote_context(claims, review.vehicle_id, list(review.facts.service_codes))
-    escalation = _assess(context, review.invalidation_reason)
+    escalation = _assess_escalation(context, review.invalidation_reason)
     if request.decision == "reject":
         if not (request.reason or "").strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="A rejection reason is required",
             )
-        return _decision_response(
-            quote_command_store.reject(
-                review.id,
-                shop_id=claims.shop_id,
-                demo_session_id=claims.demo_session_id,
-                approver_role=claims.role,
-                approver_session_id=claims.demo_session_id,
-                reason=request.reason or "",
-                escalation_reasons=escalation.reasons,
+        try:
+            return _decision_response(
+                quote_command_store.reject(
+                    review.id,
+                    shop_id=claims.shop_id,
+                    demo_session_id=claims.demo_session_id,
+                    approver_role=claims.role,
+                    approver_session_id=claims.demo_session_id,
+                    reason=request.reason or "",
+                    escalation_reasons=escalation.reasons,
+                )
             )
-        )
+        except AlreadyDecidedError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
+            ) from error
 
     try:
         decision = quote_command_store.approve(
@@ -1074,13 +1135,15 @@ def _approved_quote(quote_id: str, claims: SessionClaims) -> ApprovedQuoteContex
     """Load an approved quote and its slot; every message step depends on this gate."""
     try:
         decision, review = quote_command_store.approved_quote(
-            quote_id, claims.shop_id, claims.demo_session_id
+            quote_id, shop_id=claims.shop_id, demo_session_id=claims.demo_session_id
         )
     except KeyError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A human approval is required before reserving or messaging",
         ) from error
+    except StaleQuoteError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     except PermissionError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Approved quote not found"
@@ -1182,7 +1245,7 @@ def enqueue_sms(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> SmsDeliveryResponse:
     context = _approved_quote(quote_id, claims)
-    if appointment_store.for_quote(quote_id, claims.shop_id, claims.demo_session_id) is None:
+    if appointment_store.for_quote(quote_id, shop_id=claims.shop_id, demo_session_id=claims.demo_session_id) is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Reserve the appointment before enqueueing a message",
@@ -1219,7 +1282,7 @@ def get_message(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> SmsDeliveryResponse:
     try:
-        delivery = messaging_store.get(delivery_id, claims.shop_id, claims.demo_session_id)
+        delivery = messaging_store.get(delivery_id, shop_id=claims.shop_id, demo_session_id=claims.demo_session_id)
     except (KeyError, PermissionError) as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
@@ -1233,7 +1296,7 @@ def advance_message(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> SmsDeliveryResponse:
     try:
-        delivery = messaging_store.advance(delivery_id, claims.shop_id, claims.demo_session_id)
+        delivery = messaging_store.advance(delivery_id, shop_id=claims.shop_id, demo_session_id=claims.demo_session_id)
     except (KeyError, PermissionError) as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
@@ -1261,7 +1324,7 @@ def _voice_response(note: VoiceNote) -> VoiceNoteResponse:
 
 def _load_voice_note(note_id: str, claims: SessionClaims) -> VoiceNote:
     try:
-        return voice_note_store.get(note_id, claims.shop_id, claims.demo_session_id)
+        return voice_note_store.get(note_id, shop_id=claims.shop_id, demo_session_id=claims.demo_session_id)
     except (KeyError, PermissionError) as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Voice note not found"
@@ -1307,12 +1370,12 @@ def confirm_voice_note(
     return _voice_response(voice_note_store.save(confirmed))
 
 
-@app.get("/voice-notes/{note_id}/trace")
+@app.get("/voice-notes/{note_id}/trace", response_model=VoiceTraceResponse)
 def get_voice_trace(
     note_id: str,
     claims: Annotated[SessionClaims, Depends(current_session)],
-) -> dict[str, object]:
-    return trace_payload(_load_voice_note(note_id, claims))
+) -> VoiceTraceResponse:
+    return VoiceTraceResponse.model_validate(trace_payload(_load_voice_note(note_id, claims)))
 
 
 def _require_manager(claims: SessionClaims) -> None:
@@ -1322,28 +1385,28 @@ def _require_manager(claims: SessionClaims) -> None:
         )
 
 
-@app.get("/admin/traces/{trace_id}")
+@app.get("/admin/traces/{trace_id}", response_model=TraceResponse)
 def get_trace(
     trace_id: str,
     claims: Annotated[SessionClaims, Depends(current_session)],
-) -> dict[str, object]:
+) -> TraceResponse:
     _require_manager(claims)
     try:
-        return trace_recorder.export(trace_id, claims.shop_id)
+        return TraceResponse.model_validate(trace_recorder.export(trace_id, claims.shop_id))
     except PermissionError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found"
         ) from error
 
 
-@app.get("/admin/dashboard")
+@app.get("/admin/dashboard", response_model=DashboardResponse)
 def get_quality_dashboard(
     claims: Annotated[SessionClaims, Depends(current_session)],
-) -> dict[str, object]:
+) -> DashboardResponse:
     _require_manager(claims)
     audit = quote_command_store.audit_trail(claims.shop_id)
     report = run_suite()
-    return quality_dashboard(
+    return DashboardResponse.model_validate(quality_dashboard(
         trace_recorder,
         claims.shop_id,
         escalation_outcomes={
@@ -1353,17 +1416,14 @@ def get_quality_dashboard(
         },
         evaluation_thresholds_met=report.thresholds_met,
         evaluation_score=report.scores["overall"],
-    )
+    ))
 
 
 @app.get("/admin/evaluation", response_model=EvaluationReportResponse)
 def get_evaluation_report(
     claims: Annotated[SessionClaims, Depends(current_session)],
 ) -> EvaluationReportResponse:
-    if claims.role not in ("manager", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Manager role is required"
-        )
+    _require_manager(claims)
     report = run_suite()
     return EvaluationReportResponse(
         case_count=len(report.results),
@@ -1488,14 +1548,42 @@ def decide_advisor_run(run_id: str, request: AdvisorDecisionRequest, claims: Ann
     return _run_response(run)
 
 
+def _recommendation_for_request(
+    claims: SessionClaims,
+    vehicle_id: str,
+    current_mileage_km: int,
+    *,
+    evidence_available: bool = True,
+) -> Recommendation:
+    """Explanations and chat answer for the vehicle on screen, never a stand-in Civic."""
+    vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    return evaluate_maintenance(
+        current_mileage_km,
+        datetime.now(UTC).date().isoformat(),
+        make=vehicle.make,
+        model=vehicle.model,
+        engine=vehicle.engine,
+        drivetrain=vehicle.drivetrain,
+        market=vehicle.market,
+        evidence_available=evidence_available,
+        completed_services=service_history_store.completed(claims.shop_id, vehicle_id),
+        declined_services=service_history_store.declined(claims.shop_id, vehicle_id),
+    )
+
+
 @app.post("/explanations", response_model=ExplanationResponse)
 def create_explanation(
     request: ExplanationRequest,
     claims: Annotated[SessionClaims, Depends(current_session)],
     x_trace_id: Annotated[str | None, Header()] = None,
 ) -> ExplanationResponse:
-    del claims
-    explanation = explain_recommendation(evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27", evidence_available=request.evidence_available))
+    recommendation = _recommendation_for_request(
+        claims, request.vehicle_id, request.current_mileage_km,
+        evidence_available=request.evidence_available,
+    )
+    explanation = explain_recommendation(recommendation)
     _record_span(
         x_trace_id,
         name="explanation",
@@ -1516,8 +1604,11 @@ def contextual_chat(
     claims: Annotated[SessionClaims, Depends(current_session)],
     x_trace_id: Annotated[str | None, Header()] = None,
 ) -> ExplanationResponse:
-    del claims
-    reply = answer_contextual_question(request.question, evaluate_civic_maintenance(request.current_mileage_km, "2026-07-27"), request.provider_available)
+    reply = answer_contextual_question(
+        request.question,
+        _recommendation_for_request(claims, request.vehicle_id, request.current_mileage_km),
+        request.provider_available,
+    )
     _record_span(
         x_trace_id,
         name="contextual_chat",

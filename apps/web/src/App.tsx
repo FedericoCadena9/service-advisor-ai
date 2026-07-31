@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 
 import { fetchQualityDashboard } from './api/dashboard'
+import type { AdvisorContext } from './api/advisor-context'
 import { QualityDashboard } from './components/advisor/QualityDashboard'
 
 import { saveCheckin } from './api/checkins'
@@ -26,6 +27,7 @@ import { RecommendationConsole } from './components/advisor/RecommendationConsol
 type HealthState = 'loading' | 'waking' | 'healthy' | 'unavailable'
 
 const COLD_START_RETRY_MS = 400
+const DEMO_VEHICLE_ID = 'honda-civic-2019-lx'
 
 export default function App() {
   const [state, setState] = useState<HealthState>('loading')
@@ -42,11 +44,25 @@ export default function App() {
   const [checkinSaved, setCheckinSaved] = useState(false)
   const [recommendation, setRecommendation] = useState<import('./api/generated/types.gen').RecommendationResponse>()
   const [advisorRunId, setAdvisorRunId] = useState<string | null>(null)
+  const [traceId, setTraceId] = useState<string | null>(null)
+  const [vehicleId, setVehicleId] = useState(DEMO_VEHICLE_ID)
   const [voiceNoteId, setVoiceNoteId] = useState<string | null>(null)
-  const loadDashboard = useCallback(async () => {
+  const requireToken = useCallback(() => {
     if (!token) throw new Error('Session required')
-    return fetchQualityDashboard(token)
+    return token
   }, [token])
+  const advisorContext = useCallback(
+    (): AdvisorContext => ({
+      vehicleId,
+      currentMileageKm: Number(checkinMileage) || 0,
+      traceId,
+    }),
+    [vehicleId, checkinMileage, traceId],
+  )
+  const loadDashboard = useCallback(
+    async () => fetchQualityDashboard(requireToken()),
+    [requireToken],
+  )
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -126,7 +142,7 @@ export default function App() {
         voice_note_id: voiceNoteId,
       })
       setCheckinSaved(true)
-      setRecommendation(await fetchRecommendation(token))
+      setRecommendation(await fetchRecommendation(token, advisorContext()))
     } catch {
       setSessionError('Check-in could not be saved')
     }
@@ -162,20 +178,18 @@ export default function App() {
           </form>
           <ul aria-label="Vehicle search results">
             {vehicles.map((vehicle) => (
-              <li key={vehicle.id}>{`${vehicle.vehicle_label} — Demo data`}</li>
+              <li key={vehicle.id}>
+                <button type="button" onClick={() => setVehicleId(vehicle.id)}>
+                  {`${vehicle.vehicle_label} — Demo data`}
+                </button>
+              </li>
             ))}
           </ul>
           <form onSubmit={submitCheckin} aria-labelledby="checkin-heading">
             <h3 id="checkin-heading">Vehicle check-in</h3>
             <VoiceCheckinPanel
-              onRecord={async (note) => {
-                if (!token) throw new Error('Session required')
-                return recordVoiceNote(token, note)
-              }}
-              onConfirm={async (noteId, transcript) => {
-                if (!token) throw new Error('Session required')
-                return confirmTranscript(token, noteId, transcript)
-              }}
+              onRecord={async (note) => recordVoiceNote(requireToken(), note)}
+              onConfirm={async (noteId, transcript) => confirmTranscript(requireToken(), noteId, transcript)}
               onConfirmed={setVoiceNoteId}
             />
             <label htmlFor="current-mileage">Current mileage (km)</label>
@@ -226,7 +240,7 @@ export default function App() {
             <button type="submit">Confirm check-in</button>
           </form>
           {checkinSaved && <p role="status">Check-in confirmed</p>}
-          <RecommendationConsole recommendation={recommendation} onStartRun={async () => { if (!token) throw new Error('Session required'); const run = await startAdvisorRun(token); setAdvisorRunId(run.id); return { id: run.id, events: await fetchAdvisorRunEvents(token, run.id) } }} onApproveRun={async () => { if (!token || !advisorRunId) throw new Error('Run required'); await decideAdvisorRun(token, advisorRunId) }} onAsk={async (question) => { if (!token) throw new Error('Session required'); return (await askContextualChat(token, question)).text }} onDraftQuote={async (serviceCodes) => { if (!token) throw new Error('Session required'); return draftQuote(token, serviceCodes) }} onOpenReview={async (serviceCodes) => { if (!token) throw new Error('Session required'); return openQuoteReview(token, serviceCodes) }} onDecideReview={async (reviewId, decision, reason) => { if (!token) throw new Error('Session required'); return decideQuoteReview(token, reviewId, decision, { idempotencyKey: reviewId, reason }) }} onAskData={async (question) => { if (!token) throw new Error('Session required'); return askServiceQuestion(token, question) }} timeline={{ onReserve: async (quoteId) => { if (!token) throw new Error('Session required'); return reserveAppointment(token, quoteId) }, onPreview: async (quoteId) => { if (!token) throw new Error('Session required'); return previewSms(token, quoteId) }, onSend: async (quoteId, text) => { if (!token) throw new Error('Session required'); return sendSms(token, quoteId, text) }, onAdvance: async (deliveryId) => { if (!token) throw new Error('Session required'); return advanceMessage(token, deliveryId) } }} />
+          <RecommendationConsole recommendation={recommendation} onStartRun={async () => { const activeToken = requireToken(); const run = await startAdvisorRun(activeToken); setAdvisorRunId(run.id); setTraceId(run.trace_id); return { id: run.id, events: await fetchAdvisorRunEvents(activeToken, run.id) } }} onApproveRun={async () => { const activeToken = requireToken(); if (!advisorRunId) throw new Error('Run required'); await decideAdvisorRun(activeToken, advisorRunId) }} onAsk={async (question) => (await askContextualChat(requireToken(), question, advisorContext())).text} onDraftQuote={async (serviceCodes) => draftQuote(requireToken(), serviceCodes, advisorContext())} onOpenReview={async (serviceCodes) => openQuoteReview(requireToken(), serviceCodes, advisorContext())} onDecideReview={async (reviewId, decision, reason) => decideQuoteReview(requireToken(), reviewId, decision, { idempotencyKey: reviewId, reason, context: advisorContext() })} onAskData={async (question) => askServiceQuestion(requireToken(), question)} timeline={{ onReserve: async (quoteId) => reserveAppointment(requireToken(), quoteId), onPreview: async (quoteId) => previewSms(requireToken(), quoteId), onSend: async (quoteId, text) => sendSms(requireToken(), quoteId, text), onAdvance: async (deliveryId) => advanceMessage(requireToken(), deliveryId) }} />
           {(workspace.role === 'manager' || workspace.role === 'admin') && (
             <QualityDashboard onLoad={loadDashboard} />
           )}

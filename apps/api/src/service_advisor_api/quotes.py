@@ -102,6 +102,79 @@ SERVICE_CATALOG: dict[str, QuotableService] = {
         parts=(),
         fits_engines=("1.5T",),
     ),
+    # One billable service per reviewed rule, so every canonical vehicle can be quoted.
+    "HONDA-B1": QuotableService(
+        service_code="HONDA-B1",
+        labor=(
+            LaborOperation("LUBE-OIL", Decimal("380.00"), 30),
+            LaborOperation("BRAKE-INSPECT", Decimal("310.00"), 25),
+        ),
+        parts=(PartRequirement("HON-OIL-0W20", Decimal("189.50"), 5),),
+        fits_engines=("1.5T",),
+    ),
+    "HONDA-A2": QuotableService(
+        service_code="HONDA-A2",
+        labor=(
+            LaborOperation("LUBE-OIL", Decimal("380.00"), 30),
+            LaborOperation("CABIN-FILTER", Decimal("160.00"), 15),
+        ),
+        parts=(PartRequirement("HON-OIL-0W20", Decimal("189.50"), 4),),
+        fits_engines=("1.5T",),
+    ),
+    "TOYOTA-10K": QuotableService(
+        service_code="TOYOTA-10K",
+        labor=(LaborOperation("LUBE-OIL", Decimal("395.00"), 30),),
+        parts=(PartRequirement("TOY-OIL-0W16", Decimal("205.00"), 4),),
+        fits_engines=("2.0L",),
+    ),
+    "TOYOTA-20K": QuotableService(
+        service_code="TOYOTA-20K",
+        labor=(
+            LaborOperation("LUBE-OIL", Decimal("395.00"), 30),
+            LaborOperation("TIRE-ROTATE", Decimal("240.00"), 20),
+        ),
+        parts=(PartRequirement("TOY-OIL-0W16", Decimal("205.00"), 5),),
+        fits_engines=("2.5L",),
+    ),
+    "TOYOTA-30K": QuotableService(
+        service_code="TOYOTA-30K",
+        labor=(LaborOperation("LUBE-OIL-TRUCK", Decimal("480.00"), 40),),
+        parts=(PartRequirement("TOY-OIL-0W20", Decimal("232.00"), 6),),
+        fits_engines=("3.5L",),
+    ),
+    "FORD-SCHED-A": QuotableService(
+        service_code="FORD-SCHED-A",
+        labor=(LaborOperation("LUBE-OIL-TRUCK", Decimal("480.00"), 40),),
+        parts=(PartRequirement("FOR-OIL-5W30", Decimal("218.00"), 6),),
+        fits_engines=("3.5L",),
+    ),
+    "FORD-SCHED-B": QuotableService(
+        service_code="FORD-SCHED-B",
+        labor=(LaborOperation("LUBE-OIL-TRUCK", Decimal("480.00"), 40),),
+        parts=(PartRequirement("FOR-OIL-5W20", Decimal("226.00"), 8),),
+        fits_engines=("5.0L",),
+    ),
+    "FORD-SCHED-C": QuotableService(
+        service_code="FORD-SCHED-C",
+        labor=(LaborOperation("LUBE-OIL", Decimal("395.00"), 30),),
+        parts=(PartRequirement("FOR-OIL-5W20", Decimal("226.00"), 4),),
+        fits_engines=("1.5L",),
+    ),
+    "FORD-SCHED-D": QuotableService(
+        service_code="FORD-SCHED-D",
+        labor=(
+            LaborOperation("LUBE-OIL", Decimal("395.00"), 30),
+            LaborOperation("TIRE-ROTATE", Decimal("240.00"), 20),
+        ),
+        parts=(PartRequirement("FOR-OIL-5W30", Decimal("218.00"), 6),),
+        fits_engines=("2.3L",),
+    ),
+    "FORD-SCHED-E": QuotableService(
+        service_code="FORD-SCHED-E",
+        labor=(LaborOperation("LUBE-OIL", Decimal("395.00"), 30),),
+        parts=(PartRequirement("FOR-OIL-5W30", Decimal("218.00"), 6),),
+        fits_engines=("2.3L",),
+    ),
     "HONDA-MULTIPOINT-INSPECTION": QuotableService(
         service_code="HONDA-MULTIPOINT-INSPECTION",
         labor=(),

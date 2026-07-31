@@ -57,6 +57,10 @@ class OperationsStore:
                     ("demo-shop", "HON-FILTER-15400", 4, "in_stock", None),
                     ("demo-shop", "HON-CABIN-80292", 0, "backordered", "2026-08-14"),
                     ("demo-shop", "HON-BRAKE-45022", 0, "discontinued", None),
+                    ("demo-shop", "TOY-OIL-0W16", 20, "in_stock", None),
+                    ("demo-shop", "TOY-OIL-0W20", 18, "in_stock", None),
+                    ("demo-shop", "FOR-OIL-5W30", 24, "in_stock", None),
+                    ("demo-shop", "FOR-OIL-5W20", 16, "in_stock", None),
                 ),
             )
             self._connection.executemany(

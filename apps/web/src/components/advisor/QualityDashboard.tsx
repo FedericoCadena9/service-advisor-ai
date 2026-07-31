@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 
-import type { QualityDashboard as QualityDashboardData } from '../../api/dashboard'
+import type { DashboardResponse } from '../../api/generated/types.gen'
 
-export function QualityDashboard({ onLoad }: { onLoad: () => Promise<QualityDashboardData> }) {
-  const [dashboard, setDashboard] = useState<QualityDashboardData>()
+export function QualityDashboard({ onLoad }: { onLoad: () => Promise<DashboardResponse> }) {
+  const [dashboard, setDashboard] = useState<DashboardResponse>()
   const [error, setError] = useState('')
 
   useEffect(() => {

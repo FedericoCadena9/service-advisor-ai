@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from threading import RLock
 from typing import Literal
 from uuid import uuid4
 
@@ -93,13 +94,15 @@ def transcribe(
         TranscriptSegment(starts_at_seconds=offset, text=text)
         for offset, text in DRAFT_SEGMENTS[language]
     )
+    # Audio kept only until the Advisor confirms, and never past the recovery limit.
+    expires_at = (now or datetime.now(UTC)) + FAILED_AUDIO_RETENTION
     return VoiceNote(
         **common,
         state="transcribed",
         segments=segments,
         transcript=". ".join(segment.text for segment in segments),
         audio_retained=True,
-        audio_retention_expires_at=None,
+        audio_retention_expires_at=expires_at.isoformat(),
         failure_reason=None,
         manual_entry_available=True,
     )
@@ -139,14 +142,17 @@ def trace_payload(note: VoiceNote) -> dict[str, object]:
 
 class VoiceNoteStore:
     def __init__(self) -> None:
+        self._lock = RLock()
         self._notes: dict[str, VoiceNote] = {}
 
     def save(self, note: VoiceNote) -> VoiceNote:
-        self._notes[note.id] = note
+        with self._lock:
+            self._notes[note.id] = note
         return note
 
-    def get(self, note_id: str, shop_id: str, demo_session_id: str) -> VoiceNote:
-        note = self._notes[note_id]
+    def get(self, note_id: str, *, shop_id: str, demo_session_id: str) -> VoiceNote:
+        with self._lock:
+            note = self._notes[note_id]
         if (note.shop_id, note.demo_session_id) != (shop_id, demo_session_id):
             raise PermissionError("Voice note is outside this demo session")
         return note

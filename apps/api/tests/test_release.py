@@ -36,8 +36,13 @@ def test_cloud_run_service_scales_to_zero_with_the_agreed_limits() -> None:
     assert container["startupProbe"]["httpGet"]["path"] == "/health"
 
 
-def test_abuse_controls_are_configured() -> None:
-    controls = _cloud_run()["abuseControls"]
+def test_abuse_controls_live_in_a_valid_manifest() -> None:
+    """What if the operator runs `gcloud run services replace` instead of hand-editing?"""
+    service = _cloud_run()
+    controls = yaml.safe_load((REPOSITORY / "deploy/cloud-run/cloud-armor.yaml").read_text())
+
+    # A Knative Service rejects unknown top-level fields, so the policy is its own file.
+    assert set(service) == {"apiVersion", "kind", "metadata", "spec"}
 
     assert controls["requestsPerMinutePerIp"] == 60
     assert controls["maxRequestBodyBytes"] == 65536
@@ -104,11 +109,36 @@ def test_readiness_reports_cold_start_then_ready(monkeypatch: pytest.MonkeyPatch
     assert "create_semantic_views" in second["migration_steps"]
 
 
-def test_readiness_fails_closed_when_a_gate_fails() -> None:
-    response = TestClient(app).get("/readiness", params={"smoke_ok": False})
+def test_readiness_fails_closed_when_a_gate_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SMOKE_CHECK_PASSED", "false")
+
+    response = TestClient(app).get("/readiness")
 
     assert response.status_code == 503
     assert "smoke" in response.json()["detail"]
+
+
+def test_a_visitor_cannot_flip_release_gates_from_the_query_string() -> None:
+    """What if a public visitor passes the gate flags instead of the deployment setting them?"""
+    response = TestClient(app).get(
+        "/readiness", params={"smoke_ok": False, "live_model_promotion_approved": True}
+    )
+
+    gates = {gate["name"]: gate["passed"] for gate in response.json()["gates"]}
+    assert response.status_code == 200
+    assert gates["smoke"] is True
+    assert gates["live_model_promotion"] is False
+
+
+def test_the_operator_flips_the_manual_promotion_gate_through_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LIVE_MODEL_PROMOTION_APPROVED", "true")
+
+    response = TestClient(app).get("/readiness")
+
+    gates = {gate["name"]: gate["passed"] for gate in response.json()["gates"]}
+    assert gates["live_model_promotion"] is True
 
 
 def test_release_manifest_is_public() -> None:
@@ -124,4 +154,5 @@ def test_public_demo_documentation_records_the_agreed_sections() -> None:
     for heading in ("## Setup", "## Release gates", "## Provider limits", "## Recovery behavior"):
         assert heading in documentation
     assert "Manual live-model promotion gate" in documentation
-    assert "live_model_promotion_approved=true" in documentation
+    assert "LIVE_MODEL_PROMOTION_APPROVED=true" in documentation
+    assert "never from a query string" in documentation

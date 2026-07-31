@@ -1,0 +1,27 @@
+# Cloud Armor policy applied in front of the Cloud Run service.
+# Kept out of service.yaml because `gcloud run services replace` rejects unknown
+# top-level fields in a Knative Service manifest.
+name: service-advisor-demo-abuse-controls
+description: Public demo abuse controls
+rules:
+  - action: throttle
+    priority: 1000
+    match:
+      versionedExpr: SRC_IPS_V1
+      config:
+        srcIpRanges: ["*"]
+    rateLimitOptions:
+      enforceOnKey: IP
+      rateLimitThreshold:
+        count: 60
+        intervalSec: 60
+      conformAction: allow
+      exceedAction: deny(429)
+      banDurationSec: 300
+      banThreshold:
+        count: 80
+        intervalSec: 60
+requestsPerMinutePerIp: 60
+burstRequestsPerIp: 20
+maxRequestBodyBytes: 65536
+bannedDurationSeconds: 300

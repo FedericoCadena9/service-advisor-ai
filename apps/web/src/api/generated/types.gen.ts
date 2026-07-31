@@ -75,6 +75,10 @@ export type ChatRequest = {
      */
     question: string;
     /**
+     * Vehicle Id
+     */
+    vehicle_id: string;
+    /**
      * Current Mileage Km
      */
     current_mileage_km: number;
@@ -181,6 +185,56 @@ export type CreateDemoSessionRequest = {
 };
 
 /**
+ * DashboardResponse
+ */
+export type DashboardResponse = {
+    /**
+     * Trace Count
+     */
+    trace_count: number;
+    /**
+     * Span Count
+     */
+    span_count: number;
+    /**
+     * Spans By Kind
+     */
+    spans_by_kind: {
+        [key: string]: number;
+    };
+    /**
+     * Citation Rate
+     */
+    citation_rate: number;
+    /**
+     * P50 Latency Ms
+     */
+    p50_latency_ms: number;
+    /**
+     * P95 Latency Ms
+     */
+    p95_latency_ms: number;
+    /**
+     * Total Cost Mxn
+     */
+    total_cost_mxn: string;
+    /**
+     * Escalation Outcomes
+     */
+    escalation_outcomes: {
+        [key: string]: number;
+    };
+    /**
+     * Evaluation Thresholds Met
+     */
+    evaluation_thresholds_met: boolean;
+    /**
+     * Evaluation Score
+     */
+    evaluation_score: number;
+};
+
+/**
  * DemoSessionResponse
  */
 export type DemoSessionResponse = {
@@ -248,6 +302,10 @@ export type EvaluationReportResponse = {
  * ExplanationRequest
  */
 export type ExplanationRequest = {
+    /**
+     * Vehicle Id
+     */
+    vehicle_id: string;
     /**
      * Current Mileage Km
      */
@@ -537,6 +595,10 @@ export type QuoteReviewResponse = {
      */
     status: string;
     /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
      * Invalidation Reason
      */
     invalidation_reason: string | null;
@@ -815,6 +877,79 @@ export type SmsRequest = {
 };
 
 /**
+ * SpanResponse
+ */
+export type SpanResponse = {
+    /**
+     * Span Id
+     */
+    span_id: string;
+    /**
+     * Parent Span Id
+     */
+    parent_span_id: string | null;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Latency Ms
+     */
+    latency_ms: number;
+    /**
+     * Cost Mxn
+     */
+    cost_mxn: string;
+    /**
+     * Attributes
+     */
+    attributes: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * TraceResponse
+ */
+export type TraceResponse = {
+    /**
+     * Trace Id
+     */
+    trace_id: string;
+    versions: TraceVersionsResponse;
+    /**
+     * Spans
+     */
+    spans: Array<SpanResponse>;
+};
+
+/**
+ * TraceVersionsResponse
+ */
+export type TraceVersionsResponse = {
+    /**
+     * Rule Version
+     */
+    rule_version: string | null;
+    /**
+     * Prompt Version
+     */
+    prompt_version: string;
+    /**
+     * Dataset Version
+     */
+    dataset_version: string;
+    /**
+     * Model
+     */
+    model: string;
+};
+
+/**
  * TranscriptSegmentResponse
  */
 export type TranscriptSegmentResponse = {
@@ -1001,6 +1136,40 @@ export type VoiceNoteResponse = {
 };
 
 /**
+ * VoiceTraceResponse
+ */
+export type VoiceTraceResponse = {
+    /**
+     * Voice Note Id
+     */
+    voice_note_id: string;
+    /**
+     * Language
+     */
+    language: 'en' | 'es';
+    /**
+     * Duration Seconds
+     */
+    duration_seconds: number;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Segment Count
+     */
+    segment_count: number;
+    /**
+     * Transcript Character Count
+     */
+    transcript_character_count: number;
+    /**
+     * Audio Retained
+     */
+    audio_retained: boolean;
+};
+
+/**
  * WorkspaceResponse
  */
 export type WorkspaceResponse = {
@@ -1057,27 +1226,9 @@ export type GetReleaseManifestReleaseGetResponse = GetReleaseManifestReleaseGetR
 export type GetReadinessReadinessGetData = {
     body?: never;
     path?: never;
-    query?: {
-        /**
-         * Smoke Ok
-         */
-        smoke_ok?: boolean;
-        /**
-         * Live Model Promotion Approved
-         */
-        live_model_promotion_approved?: boolean;
-    };
+    query?: never;
     url: '/readiness';
 };
-
-export type GetReadinessReadinessGetErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetReadinessReadinessGetError = GetReadinessReadinessGetErrors[keyof GetReadinessReadinessGetErrors];
 
 export type GetReadinessReadinessGetResponses = {
     /**
@@ -1925,12 +2076,9 @@ export type GetVoiceTraceVoiceNotesNoteIdTraceGetError = GetVoiceTraceVoiceNotes
 
 export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponses = {
     /**
-     * Response Get Voice Trace Voice Notes  Note Id  Trace Get
      * Successful Response
      */
-    200: {
-        [key: string]: unknown;
-    };
+    200: VoiceTraceResponse;
 };
 
 export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponse = GetVoiceTraceVoiceNotesNoteIdTraceGetResponses[keyof GetVoiceTraceVoiceNotesNoteIdTraceGetResponses];
@@ -1964,12 +2112,9 @@ export type GetTraceAdminTracesTraceIdGetError = GetTraceAdminTracesTraceIdGetEr
 
 export type GetTraceAdminTracesTraceIdGetResponses = {
     /**
-     * Response Get Trace Admin Traces  Trace Id  Get
      * Successful Response
      */
-    200: {
-        [key: string]: unknown;
-    };
+    200: TraceResponse;
 };
 
 export type GetTraceAdminTracesTraceIdGetResponse = GetTraceAdminTracesTraceIdGetResponses[keyof GetTraceAdminTracesTraceIdGetResponses];
@@ -1998,12 +2143,9 @@ export type GetQualityDashboardAdminDashboardGetError = GetQualityDashboardAdmin
 
 export type GetQualityDashboardAdminDashboardGetResponses = {
     /**
-     * Response Get Quality Dashboard Admin Dashboard Get
      * Successful Response
      */
-    200: {
-        [key: string]: unknown;
-    };
+    200: DashboardResponse;
 };
 
 export type GetQualityDashboardAdminDashboardGetResponse = GetQualityDashboardAdminDashboardGetResponses[keyof GetQualityDashboardAdminDashboardGetResponses];

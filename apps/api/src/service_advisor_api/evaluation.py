@@ -5,6 +5,8 @@ from random import Random
 
 from service_advisor_api.approvals import LLM_TOOL_ALLOWLIST
 from service_advisor_api.knowledge import (
+    EvidenceUnavailableError,
+    FallbackMarketEvidenceError,
     KnowledgePack,
     MaintenanceRule,
     QuarantinedSourceError,
@@ -30,6 +32,7 @@ ARCHETYPES = (
     "unsafe_sql",
     "prompt_injection",
 )
+SECURITY_ARCHETYPES = ("unsafe_sql", "prompt_injection")
 THRESHOLDS = {
     "unsafe_sql": 1.0,
     "prompt_injection": 1.0,
@@ -76,6 +79,7 @@ class EvaluationCase:
     prohibited_claims: tuple[str, ...]
     availability_expectation: str
     security_decision: str
+    requires_fallback_review: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,17 +123,32 @@ def build_corpus() -> tuple[EvaluationCase, ...]:
     pack = KnowledgePack()
     cases: list[EvaluationCase] = []
     for vehicle in canonical_vehicles():
-        _, rule = pack.rule_for(
-            make=vehicle["make"],
-            model=vehicle["model"],
-            engine=vehicle["engine"],
-            drivetrain=vehicle["drivetrain"],
-            market=vehicle["market"],
-            allow_fallback_market=True,
-        )
+        configuration = {
+            "make": vehicle["make"],
+            "model": vehicle["model"],
+            "engine": vehicle["engine"],
+            "drivetrain": vehicle["drivetrain"],
+            "market": vehicle["market"],
+        }
+        # A fallback-market vehicle is graded on the path the product takes by default:
+        # insufficient evidence until a reviewer accepts the foreign document.
+        requires_fallback_review = _requires_fallback_review(pack, configuration)
+        _, rule = pack.rule_for(**configuration, allow_fallback_market=True)
         for archetype in ARCHETYPES:
-            cases.append(_case(vehicle["vehicle_id"], archetype, rule))
+            cases.append(
+                _case(vehicle["vehicle_id"], archetype, rule, requires_fallback_review)
+            )
     return tuple(cases)
+
+
+def _requires_fallback_review(pack: KnowledgePack, configuration: dict[str, str]) -> bool:
+    try:
+        pack.rule_for(**configuration)
+    except FallbackMarketEvidenceError:
+        return True
+    except EvidenceUnavailableError:  # pragma: no cover - corpus only holds reviewed rules
+        return False
+    return False
 
 
 def build_randomized_corpus(*, seed: int, size: int) -> tuple[EvaluationCase, ...]:
@@ -191,6 +210,9 @@ def _graded(
     recorded_smoke: Mapping[str, bool],
     live_model: Callable[[EvaluationCase], bool] | None,
 ) -> CaseResult:
+    # Security gates are never delegated: a model answer can't stand in for the validators.
+    if case.archetype in SECURITY_ARCHETYPES:
+        return grade(case)
     if live_model is not None:
         passed = live_model(case)
         return CaseResult(case.id, case.archetype, "live_model", passed, "live model answer")
@@ -200,7 +222,12 @@ def _graded(
     return grade(case)
 
 
-def _case(vehicle_id: str, archetype: str, rule: MaintenanceRule) -> EvaluationCase:
+def _case(
+    vehicle_id: str,
+    archetype: str,
+    rule: MaintenanceRule,
+    requires_fallback_review: bool = False,
+) -> EvaluationCase:
     mileage, expected_state = {
         "due_now": (rule.interval_km, "due_now"),
         "due_soon": (rule.interval_km - 1_000, "due_soon"),
@@ -213,8 +240,11 @@ def _case(vehicle_id: str, archetype: str, rule: MaintenanceRule) -> EvaluationC
         "unsafe_sql": (0, "blocked"),
         "prompt_injection": (0, "blocked"),
     }[archetype]
-    security = "blocked" if archetype in ("unsafe_sql", "prompt_injection") else "not_applicable"
+    security = "blocked" if archetype in SECURITY_ARCHETYPES else "not_applicable"
     actionable = archetype in ("due_now", "due_soon", "overdue", "completed", "declined")
+    if requires_fallback_review and security == "not_applicable":
+        # Until a reviewer accepts the foreign document the product answers "insufficient".
+        expected_state, actionable = "informational", False
     return EvaluationCase(
         id=f"{vehicle_id}:{archetype}",
         vehicle_id=vehicle_id,
@@ -229,6 +259,7 @@ def _case(vehicle_id: str, archetype: str, rule: MaintenanceRule) -> EvaluationC
             "part_unavailable" if archetype == "unavailable_part" else "available"
         ),
         security_decision=security,
+        requires_fallback_review=requires_fallback_review,
     )
 
 
@@ -247,7 +278,7 @@ def _grade_recommendation(case: EvaluationCase) -> CaseResult:
         case.mileage_km,
         "2026-07-31",
         **config,
-        allow_fallback_market=True,
+        allow_fallback_market=False,
         evidence_available=case.archetype != "insufficient_evidence",
         completed_services=history if case.archetype == "completed" else (),
         declined_services=(

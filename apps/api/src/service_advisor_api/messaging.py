@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from math import ceil
+from threading import RLock
 from typing import ClassVar
 from uuid import uuid5
 
@@ -119,6 +120,7 @@ class MessagingStore:
     }
 
     def __init__(self) -> None:
+        self._lock = RLock()
         self._deliveries: dict[str, SmsDelivery] = {}
 
     def enqueue(
@@ -135,37 +137,43 @@ class MessagingStore:
         citation_section: str | None,
     ) -> SmsDelivery:
         delivery_id = str(uuid5(APPOINTMENT_NAMESPACE, f"sms:{quote_id}"))
-        existing = self._deliveries.get(delivery_id)
-        if existing is not None:
-            return existing
-        delivery = SmsDelivery(
-            id=delivery_id,
-            quote_id=quote_id,
-            shop_id=shop_id,
-            demo_session_id=demo_session_id,
-            text=text,
-            segments=segments,
-            state="queued",
-            simulated=True,
-            approver_role=approver_role,
-            rule_version=rule_version,
-            citation_page=citation_page,
-            citation_section=citation_section,
-        )
-        self._deliveries[delivery_id] = delivery
-        return delivery
+        with self._lock:
+            existing = self._deliveries.get(delivery_id)
+            if existing is not None:
+                return existing
+            delivery = SmsDelivery(
+                id=delivery_id,
+                quote_id=quote_id,
+                shop_id=shop_id,
+                demo_session_id=demo_session_id,
+                text=text,
+                segments=segments,
+                state="queued",
+                simulated=True,
+                approver_role=approver_role,
+                rule_version=rule_version,
+                citation_page=citation_page,
+                citation_section=citation_section,
+            )
+            self._deliveries[delivery_id] = delivery
+            return delivery
 
-    def get(self, delivery_id: str, shop_id: str, demo_session_id: str) -> SmsDelivery:
-        delivery = self._deliveries[delivery_id]
+    def get(self, delivery_id: str, *, shop_id: str, demo_session_id: str) -> SmsDelivery:
+        with self._lock:
+            delivery = self._deliveries[delivery_id]
         if (delivery.shop_id, delivery.demo_session_id) != (shop_id, demo_session_id):
             raise PermissionError("Message is outside this demo session")
         return delivery
 
-    def advance(self, delivery_id: str, shop_id: str, demo_session_id: str) -> SmsDelivery:
-        delivery = self.get(delivery_id, shop_id, demo_session_id)
-        advanced = replace(delivery, state=self.NEXT_STATE[delivery.state])
-        self._deliveries[delivery_id] = advanced
-        return advanced
+    def advance(self, delivery_id: str, *, shop_id: str, demo_session_id: str) -> SmsDelivery:
+        with self._lock:
+            delivery = self.get(
+                delivery_id, shop_id=shop_id, demo_session_id=demo_session_id
+            )
+            advanced = replace(delivery, state=self.NEXT_STATE[delivery.state])
+            self._deliveries[delivery_id] = advanced
+            return advanced
+
 
 
 def _segments(text: str) -> int:

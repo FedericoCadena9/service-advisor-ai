@@ -28,7 +28,7 @@ def _advisor_journey(client: TestClient) -> tuple[dict[str, str], str]:
     client.post(
         "/contextual-chat",
         headers=traced,
-        json={"question": "Why", "current_mileage_km": 48_000, "provider_available": True},
+        json={"question": "Why", "vehicle_id": "honda-civic-2019-lx", "current_mileage_km": 48_000, "provider_available": True},
     )
     review = client.post(
         "/vehicles/honda-civic-2019-lx/quote-reviews",

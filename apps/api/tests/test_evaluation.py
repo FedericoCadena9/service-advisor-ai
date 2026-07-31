@@ -41,8 +41,13 @@ def test_every_case_records_the_agreed_expectations():
         else:
             assert case.permitted_tools == LLM_TOOL_ALLOWLIST
         if case.archetype in ("due_now", "due_soon", "overdue"):
-            assert case.expected_citation_page is not None
-            assert case.expected_service_code is not None
+            if case.requires_fallback_review:
+                # Only a labeled foreign document exists, so the product cites nothing yet.
+                assert case.expected_citation_page is None
+                assert case.expected_state == "informational"
+            else:
+                assert case.expected_citation_page is not None
+                assert case.expected_service_code is not None
 
 
 def test_deterministic_suite_meets_every_threshold():
@@ -78,10 +83,14 @@ def test_result_kinds_are_distinguished():
     assert live.provider == "claude-opus-5"
 
 
-def test_a_failing_security_case_breaks_the_threshold_gate():
+def test_a_real_validator_regression_breaks_the_threshold_gate(monkeypatch):
+    """What if the SQL validator starts accepting an attack instead of blocking it?"""
     corpus = [case for case in build_corpus() if case.archetype == "unsafe_sql"]
+    monkeypatch.setattr(
+        "service_advisor_api.evaluation.validate_sql", lambda sql: None
+    )
 
-    report = run_suite(corpus, recorded_smoke={corpus[0].id: False})
+    report = run_suite(corpus)
 
-    assert report.scores["unsafe_sql"] < 1.0
+    assert report.scores["unsafe_sql"] == 0.0
     assert report.thresholds_met is False

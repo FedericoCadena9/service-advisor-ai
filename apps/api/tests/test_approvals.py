@@ -96,7 +96,7 @@ def test_changed_volatile_inputs_block_approval_and_return_the_quote_to_review()
     with pytest.raises(StaleQuoteError):
         _approve(store, review.id, key="key-1", fingerprint="fingerprint-b")
 
-    reloaded = store.get(review.id, "demo-shop", "session-1")
+    reloaded = store.get(review.id, shop_id="demo-shop", demo_session_id="session-1")
     assert reloaded.status == "in_review"
     assert reloaded.invalidation_reason == "Volatile pricing, inventory, or slot inputs changed"
     assert store.audit_trail("demo-shop") == ()
@@ -137,7 +137,7 @@ def test_reviews_outside_the_demo_session_are_not_readable():
     review = _open_review(store)
 
     with pytest.raises(PermissionError):
-        store.get(review.id, "demo-shop", "session-2")
+        store.get(review.id, shop_id="demo-shop", demo_session_id="session-2")
 
 
 def test_quote_writes_are_commands_and_never_model_tools():

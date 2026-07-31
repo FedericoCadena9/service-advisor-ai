@@ -125,7 +125,7 @@ def test_reservation_is_deterministic_and_idempotent():
 
     assert first.id == repeat.id
     assert first.simulated is True
-    assert store.for_quote("quote-1", "demo-shop", "session-1") == first
+    assert store.for_quote("quote-1", shop_id="demo-shop", demo_session_id="session-1") == first
 
 
 def test_reservation_is_scoped_to_the_demo_session():
@@ -140,7 +140,7 @@ def test_reservation_is_scoped_to_the_demo_session():
     )
 
     with pytest.raises(PermissionError):
-        store.for_quote("quote-1", "demo-shop", "session-2")
+        store.for_quote("quote-1", shop_id="demo-shop", demo_session_id="session-2")
 
 
 def test_timeline_progresses_through_simulated_states():
@@ -157,8 +157,8 @@ def test_timeline_progresses_through_simulated_states():
         citation_section="Maintenance Minder",
     )
 
-    sent = store.advance(delivery.id, "demo-shop", "session-1")
-    delivered = store.advance(delivery.id, "demo-shop", "session-1")
+    sent = store.advance(delivery.id, shop_id="demo-shop", demo_session_id="session-1")
+    delivered = store.advance(delivery.id, shop_id="demo-shop", demo_session_id="session-1")
 
     assert (delivery.state, sent.state, delivered.state) == ("queued", "sent", "delivered")
     assert delivered.simulated is True

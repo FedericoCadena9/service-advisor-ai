@@ -1,5 +1,7 @@
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from threading import RLock
 from uuid import uuid4
 
 from service_advisor_api.escalation import (
@@ -19,10 +21,16 @@ APPLICATION_COMMANDS = (
     "approve_quote",
     "reject_quote",
 )
+# A quote snapshot is only trustworthy while its volatile inputs are still fresh.
+QUOTE_VALIDITY = timedelta(hours=24)
 
 
 class StaleQuoteError(RuntimeError):
-    """Raised when volatile pricing, inventory, or slot inputs changed since review."""
+    """Raised when a quote can no longer be trusted: changed inputs, expiry, or invalidation."""
+
+
+class AlreadyDecidedError(RuntimeError):
+    """Raised when a decided quote is decided again in the opposite direction."""
 
 
 @dataclass(frozen=True)
@@ -51,6 +59,7 @@ class QuoteReview:
     facts: QuoteFacts
     citations: QuoteCitations
     fingerprint: str
+    expires_at: str
     status: str = "in_review"
     invalidation_reason: str | None = None
 
@@ -74,6 +83,7 @@ class QuoteCommandStore:
     """The single write path for quote decisions, with an append-only audit trail."""
 
     def __init__(self) -> None:
+        self._lock = RLock()
         self._reviews: dict[str, QuoteReview] = {}
         self._decisions: dict[str, QuoteDecision] = {}
         self._audit: list[QuoteDecision] = []
@@ -88,7 +98,9 @@ class QuoteCommandStore:
         facts: QuoteFacts,
         citations: QuoteCitations,
         fingerprint: str,
+        now: datetime | None = None,
     ) -> QuoteReview:
+        expires_at = (now or datetime.now(UTC)) + QUOTE_VALIDITY
         review = QuoteReview(
             id=str(uuid4()),
             shop_id=shop_id,
@@ -97,12 +109,15 @@ class QuoteCommandStore:
             facts=facts,
             citations=citations,
             fingerprint=fingerprint,
+            expires_at=expires_at.isoformat(),
         )
-        self._reviews[review.id] = review
+        with self._lock:
+            self._reviews[review.id] = review
         return review
 
-    def get(self, review_id: str, shop_id: str, demo_session_id: str) -> QuoteReview:
-        review = self._reviews[review_id]
+    def get(self, review_id: str, *, shop_id: str, demo_session_id: str) -> QuoteReview:
+        with self._lock:
+            review = self._reviews[review_id]
         if (review.shop_id, review.demo_session_id) != (shop_id, demo_session_id):
             raise PermissionError("Quote review is outside this demo session")
         return review
@@ -110,11 +125,12 @@ class QuoteCommandStore:
     def revalidate(
         self, review_id: str, current_facts: QuoteFacts, current_fingerprint: str
     ) -> QuoteReview:
-        review = self._reviews[review_id]
-        if current_fingerprint == review.fingerprint:
-            return review
-        self._invalidate(review, current_facts, current_fingerprint)
-        return self._reviews[review_id]
+        with self._lock:
+            review = self._reviews[review_id]
+            if current_fingerprint == review.fingerprint:
+                return review
+            self._invalidate(review, current_facts, current_fingerprint)
+            return self._reviews[review_id]
 
     def approve(
         self,
@@ -129,41 +145,47 @@ class QuoteCommandStore:
         current_fingerprint: str,
         escalation: EscalationAssessment,
         reason: str | None = None,
+        now: datetime | None = None,
     ) -> QuoteDecision:
-        review = self.get(review_id, shop_id, demo_session_id)
-        if review.status == "rejected":
-            raise StaleQuoteError("Quote was rejected and must be redrafted")
-        if current_fingerprint != review.fingerprint:
-            self._invalidate(review, current_facts, current_fingerprint)
-            raise StaleQuoteError(
-                "Price, inventory, or slot inputs changed; the quote returned to review"
+        with self._lock:
+            review = self.get(review_id, shop_id=shop_id, demo_session_id=demo_session_id)
+            if review.status == "rejected":
+                raise StaleQuoteError("Quote was rejected and must be redrafted")
+            if _has_expired(review, now):
+                raise StaleQuoteError("The quote expired and must be redrafted")
+            if current_fingerprint != review.fingerprint:
+                self._invalidate(review, current_facts, current_fingerprint)
+                raise StaleQuoteError(
+                    "Price, inventory, or slot inputs changed; the quote returned to review"
+                )
+            authorize_decision(escalation, approver_role)
+            if escalation.required and not (reason or "").strip():
+                raise EscalationReasonRequiredError(
+                    "An escalated quote requires a recorded reason"
+                )
+
+            existing = self._decision_for(review_id)
+            if existing is not None and existing.fingerprint == review.fingerprint:
+                self._idempotency[(review_id, idempotency_key)] = existing.id
+                return existing
+
+            decision = QuoteDecision(
+                id=str(uuid4()),
+                review_id=review_id,
+                quote_id=str(uuid4()),
+                decision="approved",
+                approver_role=approver_role,
+                approver_session_id=approver_session_id,
+                reason=reason,
+                facts=review.facts,
+                citations=review.citations,
+                fingerprint=review.fingerprint,
+                escalation_reasons=escalation.reasons,
             )
-        authorize_decision(escalation, approver_role)
-        if escalation.required and not (reason or "").strip():
-            raise EscalationReasonRequiredError("An escalated quote requires a recorded reason")
-
-        existing = self._decision_for(review_id)
-        if existing is not None and existing.fingerprint == review.fingerprint:
-            self._idempotency[(review_id, idempotency_key)] = existing.id
-            return existing
-
-        decision = QuoteDecision(
-            id=str(uuid4()),
-            review_id=review_id,
-            quote_id=str(uuid4()),
-            decision="approved",
-            approver_role=approver_role,
-            approver_session_id=approver_session_id,
-            reason=reason,
-            facts=review.facts,
-            citations=review.citations,
-            fingerprint=review.fingerprint,
-            escalation_reasons=escalation.reasons,
-        )
-        self._record(decision)
-        self._idempotency[(review_id, idempotency_key)] = decision.id
-        self._reviews[review_id] = replace(review, status="approved")
-        return decision
+            self._record(decision)
+            self._idempotency[(review_id, idempotency_key)] = decision.id
+            self._reviews[review_id] = replace(review, status="approved")
+            return decision
 
     def reject(
         self,
@@ -176,38 +198,63 @@ class QuoteCommandStore:
         reason: str,
         escalation_reasons: tuple[str, ...] = (),
     ) -> QuoteDecision:
-        review = self.get(review_id, shop_id, demo_session_id)
-        existing = self._decision_for(review_id)
-        if existing is not None:
-            return existing
-        decision = QuoteDecision(
-            id=str(uuid4()),
-            review_id=review_id,
-            quote_id=None,
-            decision="rejected",
-            approver_role=approver_role,
-            approver_session_id=approver_session_id,
-            reason=reason,
-            facts=review.facts,
-            citations=review.citations,
-            fingerprint=review.fingerprint,
-            escalation_reasons=escalation_reasons,
-        )
-        self._record(decision)
-        self._reviews[review_id] = replace(review, status="rejected")
-        return decision
+        with self._lock:
+            review = self.get(review_id, shop_id=shop_id, demo_session_id=demo_session_id)
+            existing = self._decision_for(review_id)
+            if existing is not None and existing.decision == "approved":
+                raise AlreadyDecidedError(
+                    "The quote is already approved; invalidate or redraft it before rejecting"
+                )
+            if existing is not None:
+                return existing
+            decision = QuoteDecision(
+                id=str(uuid4()),
+                review_id=review_id,
+                quote_id=None,
+                decision="rejected",
+                approver_role=approver_role,
+                approver_session_id=approver_session_id,
+                reason=reason,
+                facts=review.facts,
+                citations=review.citations,
+                fingerprint=review.fingerprint,
+                escalation_reasons=escalation_reasons,
+            )
+            self._record(decision)
+            self._reviews[review_id] = replace(review, status="rejected")
+            return decision
 
     def approved_quote(
-        self, quote_id: str, shop_id: str, demo_session_id: str
+        self, quote_id: str, *, shop_id: str, demo_session_id: str, now: datetime | None = None
     ) -> tuple[QuoteDecision, QuoteReview]:
-        for decision in self._audit:
-            if decision.quote_id == quote_id and decision.decision == "approved":
-                review = self.get(decision.review_id, shop_id, demo_session_id)
-                return decision, review
-        raise KeyError(quote_id)
+        """An approval only stays usable while its review is still approved and unexpired."""
+        with self._lock:
+            decision = next(
+                (
+                    entry
+                    for entry in self._audit
+                    if entry.quote_id == quote_id and entry.decision == "approved"
+                ),
+                None,
+            )
+            if decision is None:
+                raise KeyError(quote_id)
+            review = self.get(
+                decision.review_id, shop_id=shop_id, demo_session_id=demo_session_id
+            )
+        if review.status != "approved" or review.fingerprint != decision.fingerprint:
+            raise StaleQuoteError(
+                "The approval was invalidated; the quote returned to review"
+            )
+        if _has_expired(review, now):
+            raise StaleQuoteError("The approved quote expired")
+        return decision, review
 
     def audit_trail(self, shop_id: str) -> tuple[QuoteDecision, ...]:
-        return tuple(decision for decision in self._audit if self._shop_of(decision) == shop_id)
+        with self._lock:
+            return tuple(
+                decision for decision in self._audit if self._shop_of(decision) == shop_id
+            )
 
     def _decision_for(self, review_id: str) -> QuoteDecision | None:
         return self._decisions.get(review_id)
@@ -229,3 +276,7 @@ class QuoteCommandStore:
 
     def _shop_of(self, decision: QuoteDecision) -> str:
         return self._reviews[decision.review_id].shop_id
+
+
+def _has_expired(review: QuoteReview, now: datetime | None) -> bool:
+    return (now or datetime.now(UTC)) >= datetime.fromisoformat(review.expires_at)
