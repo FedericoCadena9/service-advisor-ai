@@ -26,8 +26,9 @@ FORBIDDEN = re.compile(
 )
 _IDENTIFIER = re.compile(r"\b[a-z_][a-z0-9_]*\b")
 _TABLE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*(?:\s*,\s*[a-z_][a-z0-9_]*)*)")
+_SUBQUERY_SOURCE = re.compile(r"\b(?:from|join)\s*[(,]|,\s*\(")
 _FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
-_LIMIT = re.compile(r"\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+\d+)?\s*$")
+_LIMIT = re.compile(r"\blimit\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+offset\s+(\d+))?\s*$")
 _NUMBER_OR_STRING = re.compile(r"'[^']*'|\b\d+(?:\.\d+)?\b")
 
 
@@ -107,6 +108,8 @@ def validate_sql(sql: str) -> AcceptedQuery:
         raise UnsafeSqlError("Only read-only projections over semantic views are allowed")
     if '"' in normalized or "`" in normalized or "[" in normalized:
         raise UnsafeSqlError("Quoted identifiers are not allowed")
+    if _SUBQUERY_SOURCE.search(lowered):
+        raise UnsafeSqlError("Only allowlisted semantic views may be read")
     if "sqlite_" in lowered or "pragma_" in lowered:
         raise UnsafeSqlError("System catalogs are not readable")
     if "shop_id" in lowered:
@@ -135,13 +138,16 @@ def validate_sql(sql: str) -> AcceptedQuery:
 
     row_limit = ROW_LIMIT
     match = _LIMIT.search(lowered)
+    offset = 0
     if match is not None:
         # `LIMIT offset, count` means the second number is the row count.
         requested = int(match.group(2) or match.group(1))
         row_limit = min(requested, ROW_LIMIT)
+        offset = int(match.group(1)) if match.group(2) else int(match.group(3) or 0)
         normalized = normalized[: match.start()].strip()
+    limit_clause = f"LIMIT {row_limit}" + (f" OFFSET {offset}" if offset else "")
     return AcceptedQuery(
-        sql=f"{normalized} LIMIT {row_limit}",
+        sql=f"{normalized} {limit_clause}",
         views=views,
         columns=columns,
         row_limit=row_limit,

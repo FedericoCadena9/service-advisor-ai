@@ -22,10 +22,20 @@ DENIED_ATTRIBUTES = frozenset(
         "audio_reference",
     }
 )
+# Spans carry a fixed vocabulary: an unlisted key is dropped rather than trusted, so a
+# future caller cannot invent an attribute that smuggles personal data past the denylist.
+ALLOWED_ATTRIBUTES = frozenset(
+    {
+        "run_id", "events", "role", "status_code", "shop_id", "vehicle_id", "tool",
+        "rule_version", "citation_page", "state", "confidence", "actionable", "decision",
+        "command_executed", "approver_role", "escalation_reasons", "total_mxn", "model",
+        "degraded", "note",
+    }
+)
 REDACTED = "[redacted]"
 _PATTERNS = (
     re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"),
-    re.compile(r"\+?\d[\d\s().-]{7,}\d"),
+    re.compile(r"\+?\d[\d\s().-]{5,}\d"),
     re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b"),
     re.compile(r"\b[A-Z]{3}-\d{3}-[A-Z]\b"),
     re.compile(r"\b[A-Z]{3}-\d{2}-\d{2}\b"),
@@ -71,7 +81,7 @@ def redact_attributes(attributes: dict[str, object]) -> dict[str, object]:
     return {
         key: redact_value(value)
         for key, value in attributes.items()
-        if key not in DENIED_ATTRIBUTES
+        if key in ALLOWED_ATTRIBUTES and key not in DENIED_ATTRIBUTES
     }
 
 

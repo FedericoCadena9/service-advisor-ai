@@ -24,6 +24,9 @@ SERVICE_LABELS = {
     "HONDA-TURBO-COOLANT": "refrigerante turbo",
 }
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
+# Outside the approved facts and labels a message may only hold words and plain punctuation:
+# a digit, symbol or emoji is how a second price, a phone number or urgency gets smuggled in.
+_UNSUPPORTED_CHARACTER = re.compile(r"[^^\w\s,.]|\d|_", re.UNICODE)
 
 
 class InventedContentError(ValueError):
@@ -116,10 +119,15 @@ def validate_sms(
     for label in allowed_labels:
         remainder = remainder.replace(label, " ")
 
-    quoted_priorities = sum(1 for label in allowed_labels if label in text)
+    quoted_priorities = sum(text.count(label) for label in allowed_labels)
     if quoted_priorities > MAX_PRIORITIES:
         raise InventedContentError(f"Message lists more than {MAX_PRIORITIES} priorities")
 
+    unsupported = _UNSUPPORTED_CHARACTER.search(remainder)
+    if unsupported is not None:
+        raise InventedContentError(
+            f"Message adds {unsupported.group()!r}, which the approved quote does not support"
+        )
     for word in _WORD.findall(remainder.lower()):
         if word not in CONNECTIVE_VOCABULARY:
             raise InventedContentError(

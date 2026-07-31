@@ -165,9 +165,9 @@ class QuoteCommandStore:
                 )
 
             replayed = self._idempotency.get((review_id, idempotency_key))
+            if replayed is not None:
+                return next(entry for entry in self._audit if entry.id == replayed)
             existing = self._decision_for(review_id)
-            if replayed is not None and existing is not None and existing.id == replayed:
-                return existing
             if existing is not None and existing.fingerprint == review.fingerprint:
                 self._idempotency[(review_id, idempotency_key)] = existing.id
                 return existing

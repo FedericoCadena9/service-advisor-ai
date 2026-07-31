@@ -218,7 +218,7 @@ def test_redaction_reaches_nested_structures() -> None:
     payload = redact_attributes(
         {
             "nested": {"phone": "+52 55 1234 5678", "customer_name": "Ana Lopez"},
-            "history": [{"email": "ana@example.com"}, "call +52 55 0000 0000"],
+            "note": ["call +52 55 0000 0000", "mail ana@example.com"],
             "citation_page": 42,
         }
     )
@@ -228,6 +228,7 @@ def test_redaction_reaches_nested_structures() -> None:
     assert "+52 55 1234 5678" not in rendered
     assert "ana@example.com" not in rendered
     assert REDACTED in rendered
+    assert "nested" not in payload
     assert payload["citation_page"] == 42
 
 
@@ -286,3 +287,90 @@ def test_the_provider_label_matches_the_results_that_were_run() -> None:
     report = run_suite(corpus, live_model=lambda case: True, provider="deterministic")
 
     assert report.provider == "live_model"
+
+
+# Second round: regressions the fixes themselves introduced.
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        " total $99,999.00",
+        " 🚨🚨🚨",
+        " 55-1234-5678",
+        " total $99,999.00 🚨 55-1234-5678",
+        " 55.1234.5678 / 99.99",
+    ],
+    ids=["second-price", "emoji-urgency", "phone-number", "all-three", "punctuated-digits"],
+)
+def test_numbers_and_symbols_cannot_be_smuggled_past_the_word_allowlist(suffix: str) -> None:
+    """What if the invented content is digits or emoji instead of words?"""
+    approved = compose_sms(**APPROVED_SMS).text
+
+    with pytest.raises(InventedContentError):
+        validate_sms(approved + suffix, **APPROVED_SMS)
+
+
+def test_repeating_an_approved_label_cannot_exceed_the_priority_cap() -> None:
+    """What if one approved label is repeated eight times instead of three listed once?"""
+    approved = compose_sms(**APPROVED_SMS).text
+    padded = approved + " cambio de aceite y filtro" * 8
+
+    with pytest.raises(InventedContentError):
+        validate_sms(padded, **APPROVED_SMS)
+
+
+def test_an_offset_is_honoured_instead_of_silently_dropped() -> None:
+    """What if the caller asks for the second row instead of the first?"""
+    gateway = SemanticQueryGateway()
+    gateway.seed()
+    all_rows = gateway.execute(
+        validate_sql("SELECT recorded_on FROM v_service_history"), "demo-shop"
+    )
+
+    offset_rows = gateway.execute(
+        validate_sql("SELECT recorded_on FROM v_service_history LIMIT 1 OFFSET 1"), "demo-shop"
+    )
+    comma_rows = gateway.execute(
+        validate_sql("SELECT recorded_on FROM v_service_history LIMIT 1,1"), "demo-shop"
+    )
+
+    assert offset_rows == (all_rows[1],)
+    assert comma_rows == (all_rows[1],)
+
+
+def test_a_parenthesised_from_entry_is_refused() -> None:
+    """What if the FROM list holds a subquery instead of a view name?"""
+    with pytest.raises(UnsafeSqlError):
+        validate_sql("SELECT vehicle_id FROM v_service_history, (SELECT 1)")
+
+
+def test_an_unlisted_attribute_key_cannot_carry_personal_data() -> None:
+    """What if the personal data arrives under a key nobody put on the denylist?"""
+    payload = redact_attributes(
+        {
+            "caller": "Ana Lopez Martinez",
+            "address": "Av. Reforma 222, Cuauhtemoc, CDMX",
+            "citation_page": 42,
+        }
+    )
+
+    assert payload == {"citation_page": 42}
+
+
+def test_a_short_local_phone_number_is_still_scrubbed() -> None:
+    payload = redact_attributes({"note": "owner reached at 1234567"})
+
+    assert "1234567" not in str(payload)
+
+
+def test_a_replayed_idempotency_key_returns_the_stored_decision() -> None:
+    """What if the key map is the only thing that remembers the decision?"""
+    store, review_id = _store_with_review()
+    first = _approve(store, review_id, idempotency_key="key-1")
+    store._decisions.clear()
+
+    replay = _approve(store, review_id, idempotency_key="key-1")
+
+    assert replay.id == first.id
+    assert replay.quote_id == first.quote_id
