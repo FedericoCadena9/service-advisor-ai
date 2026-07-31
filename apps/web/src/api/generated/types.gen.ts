@@ -103,7 +103,7 @@ export type CheckinRequest = {
     /**
      * Concern
      */
-    concern: string;
+    concern?: string;
     /**
      * Appointment Window
      */
@@ -112,6 +112,10 @@ export type CheckinRequest = {
      * Message Consent
      */
     message_consent: boolean;
+    /**
+     * Voice Note Id
+     */
+    voice_note_id?: string | null;
 };
 
 /**
@@ -122,6 +126,10 @@ export type CheckinResponse = {
      * Current Mileage Km
      */
     current_mileage_km: number;
+    /**
+     * Prior Mileage Km
+     */
+    prior_mileage_km: number;
     /**
      * Checked In On
      */
@@ -146,10 +154,16 @@ export type CheckinResponse = {
      * Message Consent
      */
     message_consent: boolean;
+};
+
+/**
+ * ConfirmTranscriptRequest
+ */
+export type ConfirmTranscriptRequest = {
     /**
-     * Prior Mileage Km
+     * Transcript
      */
-    prior_mileage_km: number;
+    transcript: string;
 };
 
 /**
@@ -684,6 +698,20 @@ export type SmsRequest = {
 };
 
 /**
+ * TranscriptSegmentResponse
+ */
+export type TranscriptSegmentResponse = {
+    /**
+     * Starts At Seconds
+     */
+    starts_at_seconds: number;
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
  * ValidationError
  */
 export type ValidationError = {
@@ -781,6 +809,74 @@ export type VehicleSummaryResponse = {
      * Is Demo Data
      */
     is_demo_data: boolean;
+};
+
+/**
+ * VoiceNoteRequest
+ */
+export type VoiceNoteRequest = {
+    /**
+     * Language
+     */
+    language: 'en' | 'es';
+    /**
+     * Duration Seconds
+     */
+    duration_seconds: number;
+    /**
+     * Consent
+     */
+    consent: boolean;
+    /**
+     * Provider Available
+     */
+    provider_available?: boolean;
+};
+
+/**
+ * VoiceNoteResponse
+ */
+export type VoiceNoteResponse = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Language
+     */
+    language: 'en' | 'es';
+    /**
+     * Duration Seconds
+     */
+    duration_seconds: number;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Segments
+     */
+    segments: Array<TranscriptSegmentResponse>;
+    /**
+     * Transcript
+     */
+    transcript: string;
+    /**
+     * Audio Retained
+     */
+    audio_retained: boolean;
+    /**
+     * Audio Retention Expires At
+     */
+    audio_retention_expires_at: string | null;
+    /**
+     * Failure Reason
+     */
+    failure_reason: string | null;
+    /**
+     * Manual Entry Available
+     */
+    manual_entry_available: boolean;
 };
 
 /**
@@ -1548,6 +1644,112 @@ export type AdvanceMessageMessagesDeliveryIdAdvancePostResponses = {
 };
 
 export type AdvanceMessageMessagesDeliveryIdAdvancePostResponse = AdvanceMessageMessagesDeliveryIdAdvancePostResponses[keyof AdvanceMessageMessagesDeliveryIdAdvancePostResponses];
+
+export type CreateVoiceNoteVoiceNotesPostData = {
+    body: VoiceNoteRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/voice-notes';
+};
+
+export type CreateVoiceNoteVoiceNotesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateVoiceNoteVoiceNotesPostError = CreateVoiceNoteVoiceNotesPostErrors[keyof CreateVoiceNoteVoiceNotesPostErrors];
+
+export type CreateVoiceNoteVoiceNotesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: VoiceNoteResponse;
+};
+
+export type CreateVoiceNoteVoiceNotesPostResponse = CreateVoiceNoteVoiceNotesPostResponses[keyof CreateVoiceNoteVoiceNotesPostResponses];
+
+export type ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostData = {
+    body: ConfirmTranscriptRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Note Id
+         */
+        note_id: string;
+    };
+    query?: never;
+    url: '/voice-notes/{note_id}/confirmation';
+};
+
+export type ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostError = ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostErrors[keyof ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostErrors];
+
+export type ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: VoiceNoteResponse;
+};
+
+export type ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostResponse = ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostResponses[keyof ConfirmVoiceNoteVoiceNotesNoteIdConfirmationPostResponses];
+
+export type GetVoiceTraceVoiceNotesNoteIdTraceGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Note Id
+         */
+        note_id: string;
+    };
+    query?: never;
+    url: '/voice-notes/{note_id}/trace';
+};
+
+export type GetVoiceTraceVoiceNotesNoteIdTraceGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetVoiceTraceVoiceNotesNoteIdTraceGetError = GetVoiceTraceVoiceNotesNoteIdTraceGetErrors[keyof GetVoiceTraceVoiceNotesNoteIdTraceGetErrors];
+
+export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponses = {
+    /**
+     * Response Get Voice Trace Voice Notes  Note Id  Trace Get
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type GetVoiceTraceVoiceNotesNoteIdTraceGetResponse = GetVoiceTraceVoiceNotesNoteIdTraceGetResponses[keyof GetVoiceTraceVoiceNotesNoteIdTraceGetResponses];
 
 export type AnswerServiceQuestionServiceQuestionsPostData = {
     body: ServiceQuestionRequest;

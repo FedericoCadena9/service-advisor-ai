@@ -16,6 +16,8 @@ import { draftQuote } from './api/quotes'
 import { decideQuoteReview, openQuoteReview } from './api/quote-reviews'
 import { advanceMessage, previewSms, reserveAppointment, sendSms } from './api/messaging'
 import { askServiceQuestion } from './api/service-questions'
+import { confirmTranscript, recordVoiceNote } from './api/voice'
+import { VoiceCheckinPanel } from './components/advisor/VoiceCheckinPanel'
 import { RecommendationConsole } from './components/advisor/RecommendationConsole'
 
 type HealthState = 'loading' | 'healthy' | 'unavailable'
@@ -35,6 +37,7 @@ export default function App() {
   const [checkinSaved, setCheckinSaved] = useState(false)
   const [recommendation, setRecommendation] = useState<import('./api/generated/types.gen').RecommendationResponse>()
   const [advisorRunId, setAdvisorRunId] = useState<string | null>(null)
+  const [voiceNoteId, setVoiceNoteId] = useState<string | null>(null)
   const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -89,6 +92,7 @@ export default function App() {
         concern,
         appointment_window: appointmentWindow,
         message_consent: messageConsent,
+        voice_note_id: voiceNoteId,
       })
       setCheckinSaved(true)
       setRecommendation(await fetchRecommendation(token))
@@ -132,6 +136,17 @@ export default function App() {
           </ul>
           <form onSubmit={submitCheckin} aria-labelledby="checkin-heading">
             <h3 id="checkin-heading">Vehicle check-in</h3>
+            <VoiceCheckinPanel
+              onRecord={async (note) => {
+                if (!token) throw new Error('Session required')
+                return recordVoiceNote(token, note)
+              }}
+              onConfirm={async (noteId, transcript) => {
+                if (!token) throw new Error('Session required')
+                return confirmTranscript(token, noteId, transcript)
+              }}
+              onConfirmed={setVoiceNoteId}
+            />
             <label htmlFor="current-mileage">Current mileage (km)</label>
             <input
               id="current-mileage"

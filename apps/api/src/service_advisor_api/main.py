@@ -67,6 +67,18 @@ from service_advisor_api.text_to_sql import (
     UnsupportedQuestionError,
 )
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
+from service_advisor_api.voice import (
+    ConsentRequiredError,
+    Language,
+    RecordingTooLongError,
+    UnconfirmedTranscriptError,
+    VoiceNote,
+    VoiceNoteStore,
+    confirm,
+    trace_payload,
+    transcribe,
+    workflow_transcript,
+)
 from service_advisor_api.workflows import AdvisorRun, AdvisorWorkflowStore
 
 
@@ -117,13 +129,21 @@ class CheckinRequest(BaseModel):
     checked_in_on: str
     use_profile: UseProfile
     severe_use_factors: list[str]
+    concern: str = ""
+    appointment_window: str
+    message_consent: bool
+    voice_note_id: str | None = None
+
+
+class CheckinResponse(BaseModel):
+    current_mileage_km: int
+    prior_mileage_km: int
+    checked_in_on: str
+    use_profile: UseProfile
+    severe_use_factors: list[str]
     concern: str
     appointment_window: str
     message_consent: bool
-
-
-class CheckinResponse(CheckinRequest):
-    prior_mileage_km: int
 
 
 class ServiceRecordResponse(BaseModel):
@@ -286,6 +306,35 @@ class SmsDeliveryResponse(BaseModel):
     citation_section: str | None
 
 
+class VoiceNoteRequest(BaseModel):
+    language: Language
+    duration_seconds: float
+    consent: bool
+    provider_available: bool = True
+
+
+class TranscriptSegmentResponse(BaseModel):
+    starts_at_seconds: float
+    text: str
+
+
+class VoiceNoteResponse(BaseModel):
+    id: str
+    language: Language
+    duration_seconds: float
+    state: str
+    segments: list[TranscriptSegmentResponse]
+    transcript: str
+    audio_retained: bool
+    audio_retention_expires_at: str | None
+    failure_reason: str | None
+    manual_entry_available: bool
+
+
+class ConfirmTranscriptRequest(BaseModel):
+    transcript: str
+
+
 class ServiceQuestionRequest(BaseModel):
     question: str
 
@@ -321,6 +370,7 @@ appointment_store = AppointmentStore()
 messaging_store = MessagingStore()
 semantic_gateway = SemanticQueryGateway()
 semantic_gateway.seed()
+voice_note_store = VoiceNoteStore()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -478,10 +528,18 @@ def create_checkin(
     vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
     if vehicle is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    fields = request.model_dump(exclude={"voice_note_id"})
+    if request.voice_note_id is not None:
+        try:
+            fields["concern"] = workflow_transcript(_load_voice_note(request.voice_note_id, claims))
+        except UnconfirmedTranscriptError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
+            ) from error
     try:
         checkin = validate_checkin(
             prior_mileage_km=vehicle.prior_mileage_km,
-            **request.model_dump(),
+            **fields,
         )
     except InvalidCheckinError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
@@ -992,6 +1050,80 @@ def advance_message(
             status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
         ) from error
     return _delivery_response(delivery)
+
+
+def _voice_response(note: VoiceNote) -> VoiceNoteResponse:
+    return VoiceNoteResponse(
+        id=note.id,
+        language=note.language,
+        duration_seconds=note.duration_seconds,
+        state=note.state,
+        segments=[
+            TranscriptSegmentResponse(starts_at_seconds=segment.starts_at_seconds, text=segment.text)
+            for segment in note.segments
+        ],
+        transcript=note.transcript,
+        audio_retained=note.audio_retained,
+        audio_retention_expires_at=note.audio_retention_expires_at,
+        failure_reason=note.failure_reason,
+        manual_entry_available=note.manual_entry_available,
+    )
+
+
+def _load_voice_note(note_id: str, claims: SessionClaims) -> VoiceNote:
+    try:
+        return voice_note_store.get(note_id, claims.shop_id, claims.demo_session_id)
+    except (KeyError, PermissionError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Voice note not found"
+        ) from error
+
+
+@app.post(
+    "/voice-notes", response_model=VoiceNoteResponse, status_code=status.HTTP_201_CREATED
+)
+def create_voice_note(
+    request: VoiceNoteRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> VoiceNoteResponse:
+    try:
+        note = transcribe(
+            shop_id=claims.shop_id,
+            demo_session_id=claims.demo_session_id,
+            language=request.language,
+            duration_seconds=request.duration_seconds,
+            consent=request.consent,
+            provider_available=request.provider_available,
+        )
+    except (RecordingTooLongError, ConsentRequiredError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return _voice_response(voice_note_store.save(note))
+
+
+@app.post("/voice-notes/{note_id}/confirmation", response_model=VoiceNoteResponse)
+def confirm_voice_note(
+    note_id: str,
+    request: ConfirmTranscriptRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> VoiceNoteResponse:
+    note = _load_voice_note(note_id, claims)
+    try:
+        confirmed = confirm(note, request.transcript)
+    except UnconfirmedTranscriptError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return _voice_response(voice_note_store.save(confirmed))
+
+
+@app.get("/voice-notes/{note_id}/trace")
+def get_voice_trace(
+    note_id: str,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> dict[str, object]:
+    return trace_payload(_load_voice_note(note_id, claims))
 
 
 @app.post("/service-questions", response_model=ServiceQuestionResponse)
