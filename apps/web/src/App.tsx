@@ -12,6 +12,7 @@ import { searchDemoVehicles } from './api/vehicles'
 import { fetchRecommendation } from './api/recommendations'
 import { askContextualChat } from './api/chat'
 import { decideAdvisorRun, fetchAdvisorRunEvents, startAdvisorRun } from './api/advisor-run'
+import { draftQuote } from './api/quotes'
 import { RecommendationConsole } from './components/advisor/RecommendationConsole'
 
 type HealthState = 'loading' | 'healthy' | 'unavailable'
@@ -176,7 +177,7 @@ export default function App() {
             <button type="submit">Confirm check-in</button>
           </form>
           {checkinSaved && <p role="status">Check-in confirmed</p>}
-          <RecommendationConsole recommendation={recommendation} onStartRun={async () => { if (!token) throw new Error('Session required'); const run = await startAdvisorRun(token); setAdvisorRunId(run.id); return { id: run.id, events: await fetchAdvisorRunEvents(token, run.id) } }} onApproveRun={async () => { if (!token || !advisorRunId) throw new Error('Run required'); await decideAdvisorRun(token, advisorRunId) }} onAsk={async (question) => { if (!token) throw new Error('Session required'); return (await askContextualChat(token, question)).text }} />
+          <RecommendationConsole recommendation={recommendation} onStartRun={async () => { if (!token) throw new Error('Session required'); const run = await startAdvisorRun(token); setAdvisorRunId(run.id); return { id: run.id, events: await fetchAdvisorRunEvents(token, run.id) } }} onApproveRun={async () => { if (!token || !advisorRunId) throw new Error('Run required'); await decideAdvisorRun(token, advisorRunId) }} onAsk={async (question) => { if (!token) throw new Error('Session required'); return (await askContextualChat(token, question)).text }} onDraftQuote={async (serviceCodes) => { if (!token) throw new Error('Session required'); return draftQuote(token, serviceCodes) }} />
         </section>
       )}
       {sessionError && <p role="alert">{sessionError}</p>}

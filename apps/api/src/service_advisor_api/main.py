@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
@@ -23,7 +24,15 @@ from service_advisor_api.checkins import (
 )
 from service_advisor_api.explanations import explain_recommendation
 from service_advisor_api.knowledge import KnowledgePack
+from service_advisor_api.operations import OperationsStore
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
+from service_advisor_api.quotes import (
+    InformationalServiceError,
+    QuoteDraft,
+    UnknownServiceError,
+    draft_quote,
+    required_part_numbers,
+)
 from service_advisor_api.recommendations import evaluate_civic_maintenance
 from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
 from service_advisor_api.vehicles import CanonicalVehicleStore, VehicleSearchResult
@@ -139,6 +148,32 @@ class ChatRequest(BaseModel):
     provider_available: bool
 
 
+class QuoteDraftRequest(BaseModel):
+    service_codes: list[str]
+
+
+class QuoteLineResponse(BaseModel):
+    service_code: str
+    labor_mxn: Decimal
+    parts_mxn: Decimal
+    iva_mxn: Decimal
+    total_mxn: Decimal
+    duration_minutes: int
+    fitment: str
+    available: bool
+    unavailable_reason: str | None
+
+
+class QuoteDraftResponse(BaseModel):
+    lines: list[QuoteLineResponse]
+    subtotal_mxn: Decimal
+    iva_mxn: Decimal
+    total_mxn: Decimal
+    duration_minutes: int
+    bay_slot_id: str | None
+    warnings: list[str]
+
+
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 overlay_store = OverlayStore()
 vehicle_store = CanonicalVehicleStore()
@@ -148,6 +183,8 @@ knowledge_pack = KnowledgePack()
 service_history_store = CivicServiceHistoryStore()
 service_history_store.seed()
 workflow_store = AdvisorWorkflowStore()
+operations_store = OperationsStore()
+operations_store.seed()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -356,6 +393,59 @@ def get_recommendation(
         confidence=recommendation.confidence,
         warnings=list(recommendation.warnings),
         declined_service_ids=list(recommendation.declined_service_ids),
+    )
+
+
+def _build_quote_draft(shop_id: str, engine: str, service_codes: list[str]) -> QuoteDraft:
+    parts = {
+        part_number: operations_store.part(shop_id, part_number)
+        for part_number in required_part_numbers(service_codes)
+    }
+    return draft_quote(
+        service_codes,
+        engine=engine,
+        parts=parts,
+        slots=operations_store.slots(shop_id),
+    )
+
+
+@app.post(
+    "/vehicles/{vehicle_id}/quote-drafts",
+    response_model=QuoteDraftResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_quote_draft(
+    vehicle_id: str,
+    request: QuoteDraftRequest,
+    claims: Annotated[SessionClaims, Depends(current_session)],
+) -> QuoteDraftResponse:
+    vehicle = vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    checkin = checkin_store.get(
+        shop_id=claims.shop_id,
+        demo_session_id=claims.demo_session_id,
+        vehicle_id=vehicle_id,
+    )
+    if checkin is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Confirm a check-in before drafting a quote",
+        )
+    try:
+        draft = _build_quote_draft(claims.shop_id, vehicle.engine, request.service_codes)
+    except (UnknownServiceError, InformationalServiceError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+    return QuoteDraftResponse(
+        lines=[QuoteLineResponse(**line.__dict__) for line in draft.lines],
+        subtotal_mxn=draft.subtotal_mxn,
+        iva_mxn=draft.iva_mxn,
+        total_mxn=draft.total_mxn,
+        duration_minutes=draft.duration_minutes,
+        bay_slot_id=draft.bay_slot_id,
+        warnings=list(draft.warnings),
     )
 
 

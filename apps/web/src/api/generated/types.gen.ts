@@ -207,6 +207,92 @@ export type HealthResponse = {
 };
 
 /**
+ * QuoteDraftRequest
+ */
+export type QuoteDraftRequest = {
+    /**
+     * Service Codes
+     */
+    service_codes: Array<string>;
+};
+
+/**
+ * QuoteDraftResponse
+ */
+export type QuoteDraftResponse = {
+    /**
+     * Lines
+     */
+    lines: Array<QuoteLineResponse>;
+    /**
+     * Subtotal Mxn
+     */
+    subtotal_mxn: string;
+    /**
+     * Iva Mxn
+     */
+    iva_mxn: string;
+    /**
+     * Total Mxn
+     */
+    total_mxn: string;
+    /**
+     * Duration Minutes
+     */
+    duration_minutes: number;
+    /**
+     * Bay Slot Id
+     */
+    bay_slot_id: string | null;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * QuoteLineResponse
+ */
+export type QuoteLineResponse = {
+    /**
+     * Service Code
+     */
+    service_code: string;
+    /**
+     * Labor Mxn
+     */
+    labor_mxn: string;
+    /**
+     * Parts Mxn
+     */
+    parts_mxn: string;
+    /**
+     * Iva Mxn
+     */
+    iva_mxn: string;
+    /**
+     * Total Mxn
+     */
+    total_mxn: string;
+    /**
+     * Duration Minutes
+     */
+    duration_minutes: number;
+    /**
+     * Fitment
+     */
+    fitment: string;
+    /**
+     * Available
+     */
+    available: boolean;
+    /**
+     * Unavailable Reason
+     */
+    unavailable_reason: string | null;
+};
+
+/**
  * RecommendationResponse
  */
 export type RecommendationResponse = {
@@ -794,6 +880,42 @@ export type GetRecommendationVehiclesVehicleIdRecommendationGetResponses = {
 
 export type GetRecommendationVehiclesVehicleIdRecommendationGetResponse = GetRecommendationVehiclesVehicleIdRecommendationGetResponses[keyof GetRecommendationVehiclesVehicleIdRecommendationGetResponses];
 
+export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostData = {
+    body: QuoteDraftRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Vehicle Id
+         */
+        vehicle_id: string;
+    };
+    query?: never;
+    url: '/vehicles/{vehicle_id}/quote-drafts';
+};
+
+export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostError = CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostErrors[keyof CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostErrors];
+
+export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: QuoteDraftResponse;
+};
+
+export type CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponse = CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponses[keyof CreateQuoteDraftVehiclesVehicleIdQuoteDraftsPostResponses];
+
 export type StartAdvisorRunAdvisorRunsPostData = {
     body?: never;
     headers?: {
@@ -994,5 +1116,5 @@ export type ContextualChatContextualChatPostResponses = {
 export type ContextualChatContextualChatPostResponse = ContextualChatContextualChatPostResponses[keyof ContextualChatContextualChatPostResponses];
 
 export type ClientOptions = {
-    baseUrl: 'http://127.0.0.1:8000' | (string & {});
+    baseUrl: `${string}://${string}` | (string & {});
 };
