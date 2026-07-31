@@ -12,7 +12,14 @@ from service_advisor_api.approvals import (
     StaleQuoteError,
 )
 from service_advisor_api.evaluation import UNSAFE_SQL_ATTACKS, build_corpus, run_suite
-from service_advisor_api.messaging import InventedContentError, compose_sms, validate_sms
+from service_advisor_api.messaging import (
+    OPTIONAL_CLAUSES,
+    InventedContentError,
+    MessageAlreadySentError,
+    MessagingStore,
+    compose_sms,
+    validate_sms,
+)
 from service_advisor_api.observability import REDACTED, redact_attributes
 from service_advisor_api.operations import PartAvailability
 from service_advisor_api.quotes import draft_quote
@@ -484,3 +491,72 @@ def test_every_emitted_span_attribute_survives_the_allowlist() -> None:
 
     assert emitted
     assert emitted <= ALLOWED_ATTRIBUTES
+
+
+# Fourth round: the widened word list composed claims out of approved words.
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        " El total necesita cambiar.",
+        " Su servicio necesita cambiar.",
+        " Su servicio necesita un taller de confianza.",
+        " Este total necesita confirmar.",
+        " Necesita cambiar la cita.",
+        " Necesita cambiar la cita a un taller.",
+        " Responda a este mensaje este dia.",
+        " Responda este dia, estamos aqui.",
+    ],
+    ids=[
+        "price-will-change", "service-needs-change", "invented-diagnosis", "total-not-final",
+        "slot-directive", "move-to-another-shop", "same-day-deadline", "same-day-variant",
+    ],
+)
+def test_approved_words_cannot_be_composed_into_new_claims(edit: str) -> None:
+    """What if the claim is built only from words the vocabulary already allows?"""
+    approved = compose_sms(**APPROVED_SMS).text
+
+    with pytest.raises(InventedContentError):
+        validate_sms(approved + edit, **APPROVED_SMS)
+
+
+def test_the_approved_optional_clauses_are_still_writable() -> None:
+    """What if the Advisor adds one of the offered closing lines?"""
+    approved = compose_sms(**APPROVED_SMS).text
+
+    for clause in OPTIONAL_CLAUSES:
+        assert validate_sms(f"{approved} {clause}", **APPROVED_SMS) >= 1
+    assert validate_sms(
+        f"{approved} {OPTIONAL_CLAUSES[0]} {OPTIONAL_CLAUSES[1]}", **APPROVED_SMS
+    ) >= 1
+
+
+def test_a_clause_fragment_is_not_accepted() -> None:
+    """What if only half of an approved clause is used, to change its meaning?"""
+    approved = compose_sms(**APPROVED_SMS).text
+
+    with pytest.raises(InventedContentError):
+        validate_sms(f"{approved} Si necesita cambiar la cita.", **APPROVED_SMS)
+
+
+def test_resending_a_different_message_for_one_quote_is_refused() -> None:
+    """What if the second enqueue carries different text instead of a retry of the same?"""
+    store = MessagingStore()
+    enqueue = {
+        "quote_id": "quote-1",
+        "shop_id": "demo-shop",
+        "demo_session_id": "session-1",
+        "segments": 1,
+        "approver_role": "advisor",
+        "rule_version": "v1",
+        "citation_page": 42,
+        "citation_section": "Maintenance Minder",
+    }
+    first = store.enqueue(**enqueue, text="Hola Demo Customer: ¿Confirma la cita?")
+
+    repeat = store.enqueue(**enqueue, text="Hola Demo Customer: ¿Confirma la cita?")
+    with pytest.raises(MessageAlreadySentError):
+        store.enqueue(**enqueue, text="Hola Demo Customer: otra cosa")
+
+    assert repeat.id == first.id

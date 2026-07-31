@@ -12,14 +12,14 @@ SEGMENT_LENGTH = 160
 MAX_SEGMENTS = 3
 MAX_PRIORITIES = 3
 CONFIRMATION = "¿Confirma la cita?"
-# Everything an edited message may say beyond the approved facts and service labels.
-CONNECTIVE_VOCABULARY = frozenset(
-    {
-        "su", "servicio", "incluye", "y", "e", "o", "total", "cita", "gracias", "por",
-        "favor", "preferencia", "taller", "de", "confianza", "si", "necesita", "cambiar",
-        "la", "el", "un", "una", "responda", "a", "este", "mensaje", "para", "confirmar",
-        "atentamente", "quedamos", "atentos", "buen", "dia", "estamos", "aqui",
-    }
+# An edited message may append whole approved clauses and nothing else. A word allowlist
+# cannot hold: the words that spell the reschedule offer also spell a bare directive, and
+# "necesita" plus "total" is already a claim about the price.
+OPTIONAL_CLAUSES = (
+    "Gracias por su preferencia.",
+    "Si necesita cambiar la cita, responda a este mensaje.",
+    "Su taller de confianza.",
+    "Quedamos atentos.",
 )
 SERVICE_LABELS = {
     "HONDA-A1": "cambio de aceite y filtro",
@@ -28,14 +28,17 @@ SERVICE_LABELS = {
     "HONDA-BRAKE-PADS-FRONT": "balatas delanteras",
     "HONDA-TURBO-COOLANT": "refrigerante turbo",
 }
-_WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 # Outside the approved facts and labels a message may only hold words and plain punctuation:
 # a digit, symbol or emoji is how a second price, a phone number or urgency gets smuggled in.
-_UNSUPPORTED_CHARACTER = re.compile(r"[^\w\s,.]|\d|_", re.UNICODE)
+_PRIORITY_LIST = re.compile(r"su servicio incluye ([^.]*)\.")
 
 
 class InventedContentError(ValueError):
     """Raised when message text states anything the approved quote does not support."""
+
+
+class MessageAlreadySentError(RuntimeError):
+    """Raised when a quote already has a different message; the first text is authoritative."""
 
 
 class MessageTooLongError(ValueError):
@@ -93,12 +96,11 @@ def validate_sms(
     total_mxn: Decimal,
     slot_label: str,
 ) -> int:
-    """Accept only wording the approved quote supports.
+    """Accept the approved message, optionally shortened, plus whole approved clauses.
 
-    The check is an allowlist, not a denylist: the message must open with the approved
-    recipient, state the approved total and slot, ask for confirmation, and use no words
-    beyond the approved service labels and a small connective vocabulary. Anything invented
-    -- a second recipient, a price in words, an unquoted service, urgency -- has no way in.
+    Everything the customer reads is either a field the approval carries or a clause from
+    OPTIONAL_CLAUSES. Nothing can be composed: once the approved parts are removed the
+    remainder must be empty.
     """
     segments = _segments(text)
     if segments > MAX_SEGMENTS:
@@ -115,30 +117,38 @@ def validate_sms(
     if CONFIRMATION not in text:
         raise InventedContentError("Message must ask the customer to confirm")
 
+    remainder = text
+    for fixed in (opening, f"Total {total}", total, f"Cita {slot_label}.", CONFIRMATION):
+        remainder = remainder.replace(fixed, " ", 1)
+    remainder = _strip_priorities(remainder, service_codes, text)
+    for clause in OPTIONAL_CLAUSES:
+        remainder = remainder.replace(clause, " ")
+
+    leftover = remainder.strip(" ,.")
+    if leftover:
+        raise InventedContentError(
+            f"Message adds {leftover.strip()!r}, which the approved quote does not support"
+        )
+    return segments
+
+
+def _strip_priorities(remainder: str, service_codes: tuple[str, ...], text: str) -> str:
+    """Remove the priority list, refusing any service the approval does not carry."""
     allowed_labels = [
         SERVICE_LABELS.get(service_code, service_code.lower()) for service_code in service_codes
     ]
-    remainder = text
-    for fixed in (opening, total, f"Cita {slot_label}.", CONFIRMATION):
-        remainder = remainder.replace(fixed, " ", 1)
-    for label in allowed_labels:
-        remainder = remainder.replace(label, " ")
-
-    quoted_priorities = sum(text.count(label) for label in allowed_labels)
-    if quoted_priorities > MAX_PRIORITIES:
+    if sum(text.count(label) for label in allowed_labels) > MAX_PRIORITIES:
         raise InventedContentError(f"Message lists more than {MAX_PRIORITIES} priorities")
 
-    unsupported = _UNSUPPORTED_CHARACTER.search(remainder)
-    if unsupported is not None:
-        raise InventedContentError(
-            f"Message adds {unsupported.group()!r}, which the approved quote does not support"
-        )
-    for word in _WORD.findall(remainder.lower()):
-        if word not in CONNECTIVE_VOCABULARY:
+    match = _PRIORITY_LIST.search(remainder)
+    if match is None:
+        return remainder
+    for listed in match.group(1).split(","):
+        if listed.strip() not in allowed_labels:
             raise InventedContentError(
-                f"Message says {word!r}, which the approved quote does not support"
+                f"Message names {listed.strip()!r}, which the approved quote does not contain"
             )
-    return segments
+    return remainder.replace(match.group(0), " ", 1)
 
 
 class MessagingStore:
@@ -171,6 +181,10 @@ class MessagingStore:
         with self._lock:
             existing = self._deliveries.get(delivery_id)
             if existing is not None:
+                if existing.text != text:
+                    raise MessageAlreadySentError(
+                        "This quote already has an approved message; redraft to change it"
+                    )
                 return existing
             delivery = SmsDelivery(
                 id=delivery_id,

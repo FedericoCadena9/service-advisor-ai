@@ -46,6 +46,7 @@ from service_advisor_api.explanations import explain_recommendation
 from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.messaging import (
     InventedContentError,
+    MessageAlreadySentError,
     MessageTooLongError,
     MessagingStore,
     SmsDelivery,
@@ -1263,17 +1264,20 @@ def enqueue_sms(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
         ) from error
-    delivery = messaging_store.enqueue(
-        quote_id=quote_id,
-        shop_id=claims.shop_id,
-        demo_session_id=claims.demo_session_id,
-        text=request.text,
-        segments=segments,
-        approver_role=context.decision.approver_role,
-        rule_version=context.decision.citations.rule_version,
-        citation_page=context.decision.citations.citation_page,
-        citation_section=context.decision.citations.citation_section,
-    )
+    try:
+        delivery = messaging_store.enqueue(
+            quote_id=quote_id,
+            shop_id=claims.shop_id,
+            demo_session_id=claims.demo_session_id,
+            text=request.text,
+            segments=segments,
+            approver_role=context.decision.approver_role,
+            rule_version=context.decision.citations.rule_version,
+            citation_page=context.decision.citations.citation_page,
+            citation_section=context.decision.citations.citation_section,
+        )
+    except MessageAlreadySentError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return _delivery_response(delivery)
 
 
