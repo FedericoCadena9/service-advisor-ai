@@ -9,8 +9,21 @@ InsForge. Everything scales to zero when the demo is idle.
 1. **Frontend (Vercel)** — import `apps/web` and let `apps/web/vercel.json` drive the build
    (`pnpm install --frozen-lockfile`, `pnpm build`, output `dist`). Set
    `VITE_API_BASE_URL` to the Cloud Run URL.
-2. **API (Cloud Run)** — build the image from `apps/api/Dockerfile` and apply the service
-   definition:
+2. **API (Hugging Face Space)** — the API runs as a Docker Space, which needs no credit
+   card and sleeps when idle. `apps/api` is the Space root: its `README.md` front matter
+   declares `sdk: docker` and `app_port: 8080`, matching the Dockerfile.
+   ```
+   make deploy-space          # git subtree push --prefix=apps/api <space> main
+   ```
+   Set `ALLOWED_ORIGINS` and `DEMO_SESSION_SECRET` under the Space's Variables and secrets.
+   The Space answers at `https://<user>-<space>.hf.space`.
+
+   The container keeps its state in memory, so a serverless platform that isolates each
+   request would break the journey; a Space runs one persistent container, which is why it
+   is the default here.
+
+3. **API (Cloud Run, alternative)** — build the image from `apps/api/Dockerfile` and apply
+   the service definition:
    ```
    gcloud builds submit apps/api --tag gcr.io/<project>/service-advisor-api
    gcloud run services replace deploy/cloud-run/service.yaml

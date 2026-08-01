@@ -57,3 +57,32 @@ def test_the_browser_preflight_succeeds_for_an_allowed_origin() -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+
+
+def test_the_space_metadata_matches_the_container() -> None:
+    """The Space declares the port the Dockerfile actually listens on."""
+    import re
+    from pathlib import Path
+
+    api = Path(__file__).resolve().parents[1]
+    readme = (api / "README.md").read_text()
+    dockerfile = (api / "Dockerfile").read_text()
+
+    front_matter = readme.split("---")[1]
+    declared_port = re.search(r"app_port:\s*(\d+)", front_matter)
+    default_port = re.search(r"ENV .*PORT=(\d+)", dockerfile)
+
+    assert "sdk: docker" in front_matter
+    assert declared_port and default_port
+    assert declared_port.group(1) == default_port.group(1)
+
+
+def test_the_container_runs_as_an_unprivileged_known_user() -> None:
+    """Spaces expects uid 1000; running as root would be refused anyway."""
+    import re
+    from pathlib import Path
+
+    dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+
+    assert re.search(r"--uid 1000\b", dockerfile)
+    assert "USER advisor" in dockerfile

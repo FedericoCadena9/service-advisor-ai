@@ -16,7 +16,8 @@ RUN uv sync --frozen --no-dev
 FROM python:3.13-slim AS runtime
 
 # The service holds no secrets on disk and needs no shell tools; run it unprivileged.
-RUN useradd --create-home --uid 10001 advisor
+# Spaces runs the container as uid 1000; the same user is unprivileged on Cloud Run.
+RUN useradd --create-home --uid 1000 advisor
 WORKDIR /app
 COPY --from=build --chown=advisor:advisor /app /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PORT=8080
