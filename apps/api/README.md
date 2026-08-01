@@ -1,14 +1,3 @@
----
-title: Service Advisor AI API
-emoji: 🔧
-colorFrom: blue
-colorTo: gray
-sdk: docker
-app_port: 8080
-pinned: false
-short_description: Grounded service-advisor API for an independent automotive shop
----
-
 # Service Advisor AI — API
 
 The API behind the Service Advisor demo: reviewed maintenance rules with page-level

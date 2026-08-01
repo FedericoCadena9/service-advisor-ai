@@ -1,0 +1,18 @@
+# Render blueprint. The API is a persistent container, not a serverless function: its demo
+# state lives in memory, so a platform that isolates each request would lose a check-in
+# between the call that saves it and the call that reads it.
+services:
+  - type: web
+    name: service-advisor-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    healthCheckPath: /health
+    envVars:
+      # The Vercel origins allowed to call this API. A wildcard is refused.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: DEMO_SESSION_SECRET
+        generateValue: true

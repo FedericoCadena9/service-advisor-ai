@@ -59,22 +59,23 @@ def test_the_browser_preflight_succeeds_for_an_allowed_origin() -> None:
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
-def test_the_space_metadata_matches_the_container() -> None:
-    """The Space declares the port the Dockerfile actually listens on."""
-    import re
+def test_the_blueprint_and_the_container_agree_on_the_health_check() -> None:
+    """A platform that health-checks the wrong path will restart a working service."""
     from pathlib import Path
 
-    api = Path(__file__).resolve().parents[1]
-    readme = (api / "README.md").read_text()
-    dockerfile = (api / "Dockerfile").read_text()
+    import yaml
 
-    front_matter = readme.split("---")[1]
-    declared_port = re.search(r"app_port:\s*(\d+)", front_matter)
-    default_port = re.search(r"ENV .*PORT=(\d+)", dockerfile)
+    repository = Path(__file__).resolve().parents[3]
+    blueprint = yaml.safe_load((repository / "render.yaml").read_text())
+    service = blueprint["services"][0]
 
-    assert "sdk: docker" in front_matter
-    assert declared_port and default_port
-    assert declared_port.group(1) == default_port.group(1)
+    assert service["dockerfilePath"] == "./apps/api/Dockerfile"
+    assert service["dockerContext"] == "./apps/api"
+    assert service["healthCheckPath"] == "/health"
+    assert {variable["key"] for variable in service["envVars"]} == {
+        "ALLOWED_ORIGINS",
+        "DEMO_SESSION_SECRET",
+    }
 
 
 def test_the_container_runs_as_an_unprivileged_known_user() -> None:

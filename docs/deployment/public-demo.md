@@ -9,18 +9,16 @@ InsForge. Everything scales to zero when the demo is idle.
 1. **Frontend (Vercel)** — import `apps/web` and let `apps/web/vercel.json` drive the build
    (`pnpm install --frozen-lockfile`, `pnpm build`, output `dist`). Set
    `VITE_API_BASE_URL` to the Cloud Run URL.
-2. **API (Hugging Face Space)** — the API runs as a Docker Space, which needs no credit
-   card and sleeps when idle. `apps/api` is the Space root: its `README.md` front matter
-   declares `sdk: docker` and `app_port: 8080`, matching the Dockerfile.
-   ```
-   make deploy-space          # git subtree push --prefix=apps/api <space> main
-   ```
-   Set `ALLOWED_ORIGINS` and `DEMO_SESSION_SECRET` under the Space's Variables and secrets.
-   The Space answers at `https://<user>-<space>.hf.space`.
+2. **API (Render)** — the API is a persistent container, so it is deployed from
+   `render.yaml`: Render builds `apps/api/Dockerfile` and health-checks `/health`. Connect
+   the repository as a Blueprint, then set `ALLOWED_ORIGINS` to the Vercel origins that may
+   call it; `DEMO_SESSION_SECRET` is generated. The free instance sleeps when idle, which
+   the frontend already reports as a cold start.
 
-   The container keeps its state in memory, so a serverless platform that isolates each
-   request would break the journey; a Space runs one persistent container, which is why it
-   is the default here.
+   Serverless platforms are not an option here: the demo keeps its state in memory, so a
+   platform that isolates each request would lose a check-in between the call that saves it
+   and the call that reads it. Koyeb is the fallback if Render asks for a card; it reads the
+   same Dockerfile and needs no repository change.
 
 3. **API (Cloud Run, alternative)** — build the image from `apps/api/Dockerfile` and apply
    the service definition:
