@@ -9,10 +9,13 @@ InsForge. Everything scales to zero when the demo is idle.
 1. **Frontend (Vercel)** — import `apps/web` and let `apps/web/vercel.json` drive the build
    (`pnpm install --frozen-lockfile`, `pnpm build`, output `dist`). Set
    `VITE_API_BASE_URL` to the Cloud Run URL.
-2. **API (Cloud Run)** — build the image and apply the service definition:
+2. **API (Cloud Run)** — build the image from `apps/api/Dockerfile` and apply the service
+   definition:
    ```
+   gcloud builds submit apps/api --tag gcr.io/<project>/service-advisor-api
    gcloud run services replace deploy/cloud-run/service.yaml
    ```
+   The container listens on `$PORT`, which Cloud Run assigns, and runs unprivileged.
    The definition pins the agreed settings: `minScale: 0` (scale to zero),
    `maxScale: 4`, `containerConcurrency: 40`, 512Mi memory, a 60 second request timeout,
    CPU throttling with startup boost, and a `/health` startup probe.
@@ -25,7 +28,10 @@ InsForge. Everything scales to zero when the demo is idle.
    PostgreSQL writes, the read-only `semantic_reader` for pgvector and the semantic views,
    `voice_note_writer` for storage with a 24 hour retention, and
    `advisor_run_subscriber` for realtime.
-5. **Secrets** — `DEMO_SESSION_SECRET` and `INSFORGE_DATABASE_URL` are mounted from Secret
+5. **Origins** — set `ALLOWED_ORIGINS` on the Cloud Run revision to the Vercel domains that
+   may call the API, comma separated. It defaults to the two local dev servers, and a
+   wildcard is refused.
+6. **Secrets** — `DEMO_SESSION_SECRET` and `INSFORGE_DATABASE_URL` are mounted from Secret
    Manager; no secret is baked into the image or exposed to the browser.
 
 ## Release gates

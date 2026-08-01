@@ -49,6 +49,17 @@ def test_abuse_controls_live_in_a_valid_manifest() -> None:
     assert controls["bannedDurationSeconds"] == 300
 
 
+def test_the_service_image_has_something_to_build_it() -> None:
+    """A service definition naming an image nobody can build is not a deployment."""
+    dockerfile = (REPOSITORY / "apps/api/Dockerfile").read_text()
+    container = _cloud_run()["spec"]["template"]["spec"]["containers"][0]
+
+    assert container["image"]
+    assert "uvicorn" in dockerfile
+    assert "${PORT}" in dockerfile, "Cloud Run assigns the port at runtime"
+    assert "USER advisor" in dockerfile, "the service must not run as root"
+
+
 def test_vercel_project_builds_the_web_application() -> None:
     config = json.loads((REPOSITORY / "apps/web/vercel.json").read_text())
 

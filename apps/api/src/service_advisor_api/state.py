@@ -48,6 +48,25 @@ trace_recorder = TraceRecorder()
 served_first_request = False
 
 
+LOCAL_DEV_ORIGINS = ("http://127.0.0.1:4173", "http://127.0.0.1:5173")
+
+
+def allowed_origins() -> list[str]:
+    """Browser origins allowed to call this API.
+
+    The deployment names them; a blank value falls back to the dev servers rather than
+    opening the API, and a wildcard is refused outright because every route here is
+    reached with a bearer token.
+    """
+    configured = os.environ.get("ALLOWED_ORIGINS", "").strip()
+    if not configured:
+        return list(LOCAL_DEV_ORIGINS)
+    origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    if "*" in origins:
+        raise ValueError("ALLOWED_ORIGINS cannot be a wildcard; name each origin")
+    return origins
+
+
 def environment_flag(name: str, *, default: bool) -> bool:
     """Read a deployment switch. Gate outcomes come from here, never from a caller."""
     raw = os.environ.get(name)

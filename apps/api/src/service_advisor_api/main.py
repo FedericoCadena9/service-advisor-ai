@@ -15,6 +15,7 @@ from service_advisor_api.routers import (
     voice,
 )
 from service_advisor_api.state import (  # noqa: F401
+    allowed_origins,
     operations_store,
     semantic_gateway,
     service_history_store,
@@ -23,7 +24,7 @@ from service_advisor_api.state import (  # noqa: F401
 app = FastAPI(title="Service Advisor API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins(),
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
