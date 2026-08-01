@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
+import { CIVIC_CITATIONS, CIVIC_VEHICLE_ID } from "../../test/fixtures";
 import { RecommendationConsole } from "./RecommendationConsole";
 
 function renderConsole(
@@ -13,7 +14,11 @@ function renderConsole(
       events: ["started", "awaiting_human_review"],
     }),
     onApproveRun: vi.fn().mockResolvedValue(undefined),
-    onAsk: vi.fn().mockResolvedValue("HONDA-A1 is due now, page 42."),
+    onAsk: vi
+      .fn()
+      .mockResolvedValue(
+        `HONDA-A1 is due now, page ${CIVIC_CITATIONS.citation_page}.`,
+      ),
     onDraftQuote: vi.fn().mockResolvedValue({
       lines: [
         {
@@ -49,7 +54,7 @@ function renderConsole(
     }),
     onOpenReview: vi.fn().mockResolvedValue({
       id: "review-1",
-      vehicle_id: "honda-civic-2019-lx",
+      vehicle_id: CIVIC_VEHICLE_ID,
       approver_role: "advisor",
       approver_session_id: "session-1",
       facts: {
@@ -60,11 +65,7 @@ function renderConsole(
         duration_minutes: 50,
         bay_slot_id: "bay-1-morning",
       },
-      citations: {
-        rule_version: "honda-civic-2019-lx-v1",
-        citation_page: 42,
-        citation_section: "Maintenance Minder",
-      },
+      citations: { ...CIVIC_CITATIONS },
       status: "in_review",
       invalidation_reason: null,
       escalation_required: false,
@@ -88,11 +89,7 @@ function renderConsole(
         duration_minutes: 50,
         bay_slot_id: "bay-1-morning",
       },
-      citations: {
-        rule_version: "honda-civic-2019-lx-v1",
-        citation_page: 42,
-        citation_section: "Maintenance Minder",
-      },
+      citations: { ...CIVIC_CITATIONS },
       escalation_reasons: [],
     }),
     onAskData: vi.fn().mockResolvedValue({
@@ -129,9 +126,7 @@ function renderConsole(
         state: "queued",
         simulated: true,
         approver_role: "advisor",
-        rule_version: "honda-civic-2019-lx-v1",
-        citation_page: 42,
-        citation_section: "Maintenance Minder",
+        ...CIVIC_CITATIONS,
       }),
       onAdvance: vi.fn().mockResolvedValue({
         id: "delivery-1",
@@ -141,9 +136,7 @@ function renderConsole(
         state: "sent",
         simulated: true,
         approver_role: "advisor",
-        rule_version: "honda-civic-2019-lx-v1",
-        citation_page: 42,
-        citation_section: "Maintenance Minder",
+        ...CIVIC_CITATIONS,
       }),
     },
     ...overrides,
@@ -206,7 +199,9 @@ test("shows the approver, services, facts, and citations before approval", async
     ),
   ).toBeVisible();
   expect(
-    screen.getByText("honda-civic-2019-lx-v1 · page 42, Maintenance Minder"),
+    screen.getByText(
+      `${CIVIC_CITATIONS.rule_version} · page ${CIVIC_CITATIONS.citation_page}, ${CIVIC_CITATIONS.citation_section}`,
+    ),
   ).toBeVisible();
 });
 
@@ -252,11 +247,7 @@ test("routes an escalated quote to a Manager with a recorded reason", async () =
       duration_minutes: 50,
       bay_slot_id: "bay-2-afternoon",
     },
-    citations: {
-      rule_version: "honda-civic-2019-lx-v1",
-      citation_page: 42,
-      citation_section: "Maintenance Minder",
-    },
+    citations: { ...CIVIC_CITATIONS },
     status: "in_review",
     invalidation_reason: null,
     escalation_required: true,
@@ -348,7 +339,9 @@ test("reserves a simulated slot and progresses the simulated delivery", async ()
   fireEvent.click(screen.getByRole("button", { name: "Enqueue message" }));
   expect(await screen.findByText("Simulated delivery: queued")).toBeVisible();
   expect(
-    screen.getByText("Approved by advisor · honda-civic-2019-lx-v1 page 42"),
+    screen.getByText(
+      `Approved by advisor · ${CIVIC_CITATIONS.rule_version} page ${CIVIC_CITATIONS.citation_page}`,
+    ),
   ).toBeVisible();
 
   fireEvent.click(screen.getByRole("button", { name: "Advance timeline" }));
@@ -399,6 +392,8 @@ test("answers a contextual question from grounded evidence", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Ask" }));
 
   expect(
-    await screen.findByText("HONDA-A1 is due now, page 42."),
+    await screen.findByText(
+      `HONDA-A1 is due now, page ${CIVIC_CITATIONS.citation_page}.`,
+    ),
   ).toBeVisible();
 });

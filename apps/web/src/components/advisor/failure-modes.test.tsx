@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
+import { CIVIC_CITATIONS } from "../../test/fixtures";
 import { CustomerTimelinePanel } from "./CustomerTimelinePanel";
 import { QuoteDraftPanel } from "./QuoteDraftPanel";
 import { ServiceQuestionPanel } from "./ServiceQuestionPanel";
@@ -127,8 +128,7 @@ test("a failed advance keeps the delivery on screen", async () => {
           id: "delivery-1",
           state: "queued",
           approver_role: "advisor",
-          rule_version: "v1",
-          citation_page: 42,
+          ...CIVIC_CITATIONS,
         }),
         onAdvance: vi.fn().mockRejectedValue(NETWORK_DOWN),
       })}
