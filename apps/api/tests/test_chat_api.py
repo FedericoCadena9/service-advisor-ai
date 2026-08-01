@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from service_advisor_api import main
+from service_advisor_api import state
 from service_advisor_api.main import app
 from service_advisor_api.providers import ProviderUnavailableError
 
@@ -43,7 +43,7 @@ def test_a_grounded_model_answer_is_returned_with_its_citation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     grounded = "TOYOTA-10K se alcanzo en el intervalo revisado."
-    monkeypatch.setattr(main, "language_provider", StubProvider(answer=grounded))
+    monkeypatch.setattr(state, "language_provider", StubProvider(answer=grounded))
 
     body = _ask(TestClient(app))
 
@@ -55,7 +55,7 @@ def test_a_grounded_model_answer_is_returned_with_its_citation(
 def test_a_provider_outage_answers_200_not_500(monkeypatch: pytest.MonkeyPatch) -> None:
     """What if the model host is down while an Advisor is asking?"""
     monkeypatch.setattr(
-        main, "language_provider", StubProvider(error=ProviderUnavailableError("down"))
+        state, "language_provider", StubProvider(error=ProviderUnavailableError("down"))
     )
     client = TestClient(app)
     session = client.post("/demo-sessions", json={"role": "advisor"})
@@ -74,7 +74,7 @@ def test_a_provider_outage_answers_200_not_500(monkeypatch: pytest.MonkeyPatch) 
 def test_an_inventing_model_never_reaches_the_advisor(monkeypatch: pytest.MonkeyPatch) -> None:
     """What if the model answers with a price the recommendation never carried?"""
     monkeypatch.setattr(
-        main,
+        state,
         "language_provider",
         StubProvider(answer="TOYOTA-10K cuesta $4,500.00 MXN y es urgente."),
     )

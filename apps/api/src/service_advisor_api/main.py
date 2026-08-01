@@ -1,4 +1,3 @@
-import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, NamedTuple
@@ -8,11 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from service_advisor_api.appointments import Appointment, AppointmentStore
+from service_advisor_api import state
+from service_advisor_api.appointments import Appointment
 from service_advisor_api.approvals import (
     AlreadyDecidedError,
     QuoteCitations,
-    QuoteCommandStore,
     QuoteDecision,
     QuoteFacts,
     QuoteReview,
@@ -29,7 +28,6 @@ from service_advisor_api.auth import (
 from service_advisor_api.chat import answer_contextual_question
 from service_advisor_api.checkins import (
     Checkin,
-    CheckinStore,
     InvalidCheckinError,
     UseProfile,
     validate_checkin,
@@ -43,24 +41,19 @@ from service_advisor_api.escalation import (
 )
 from service_advisor_api.evaluation import DATASET_VERSION, PROMPT_VERSION, run_suite
 from service_advisor_api.explanations import explain_recommendation
-from service_advisor_api.knowledge import KnowledgePack
 from service_advisor_api.messaging import (
     InventedContentError,
     MessageAlreadySentError,
     MessageTooLongError,
-    MessagingStore,
     SmsDelivery,
     compose_sms,
     validate_sms,
 )
 from service_advisor_api.observability import (
-    TraceRecorder,
     TraceVersions,
     quality_dashboard,
 )
-from service_advisor_api.operations import OperationsStore
-from service_advisor_api.overlays import DemoOverlay, OverlayStore
-from service_advisor_api.providers import select_provider
+from service_advisor_api.overlays import DemoOverlay
 from service_advisor_api.quotes import (
     InformationalServiceError,
     QuoteDraft,
@@ -77,17 +70,33 @@ from service_advisor_api.release import (
     release_manifest,
     validate_migration,
 )
-from service_advisor_api.service_history import CivicServiceHistoryStore, ServiceRecord
+from service_advisor_api.service_history import ServiceRecord
+from service_advisor_api.state import (
+    PROVIDER_CALL_COST_MXN,
+    appointment_store,
+    checkin_store,
+    knowledge_pack,
+    messaging_store,
+    operations_store,
+    overlay_store,
+    quote_command_store,
+    semantic_gateway,
+    service_history_store,
+    trace_recorder,
+    vehicle_store,
+    voice_note_store,
+    workflow_store,
+)
+from service_advisor_api.state import environment_flag as _environment_flag
+from service_advisor_api.state import record_span as _record_span
 from service_advisor_api.text_to_sql import (
     QueryFailedError,
     QueryTimeoutError,
-    SemanticQueryGateway,
     UnsafeSqlError,
     UnsupportedQuestionError,
 )
 from service_advisor_api.vehicles import (
     CanonicalVehicle,
-    CanonicalVehicleStore,
     VehicleSearchResult,
 )
 from service_advisor_api.voice import (
@@ -96,13 +105,12 @@ from service_advisor_api.voice import (
     RecordingTooLongError,
     UnconfirmedTranscriptError,
     VoiceNote,
-    VoiceNoteStore,
     confirm,
     trace_payload,
     transcribe,
     workflow_transcript,
 )
-from service_advisor_api.workflows import AdvisorRun, AdvisorWorkflowStore
+from service_advisor_api.workflows import AdvisorRun
 
 
 class HealthResponse(BaseModel):
@@ -462,56 +470,7 @@ class ServiceQuestionResponse(BaseModel):
 
 
 app = FastAPI(title="Service Advisor API", version="0.1.0")
-overlay_store = OverlayStore()
-vehicle_store = CanonicalVehicleStore()
-vehicle_store.seed()
-checkin_store = CheckinStore()
-knowledge_pack = KnowledgePack()
-service_history_store = CivicServiceHistoryStore()
-service_history_store.seed()
-workflow_store = AdvisorWorkflowStore()
-operations_store = OperationsStore()
-operations_store.seed()
-quote_command_store = QuoteCommandStore()
-appointment_store = AppointmentStore()
-messaging_store = MessagingStore()
-semantic_gateway = SemanticQueryGateway()
-semantic_gateway.seed()
-voice_note_store = VoiceNoteStore()
-language_provider = select_provider()
-trace_recorder = TraceRecorder()
-_served_first_request = False
 DEMO_MODEL = "deterministic-demo"
-
-
-def _environment_flag(name: str, *, default: bool) -> bool:
-    raw = os.environ.get(name)
-    return default if raw is None else raw.strip().lower() in ("1", "true", "yes")
-
-
-PROVIDER_CALL_COST_MXN = Decimal("0.0125")
-SPAN_LATENCY_MS = 12.0
-
-
-def _record_span(
-    trace_id: str | None,
-    *,
-    name: str,
-    kind: str,
-    cost_mxn: Decimal = Decimal("0.0000"),
-    attributes: dict[str, object] | None = None,
-) -> None:
-    """Emit one correlated span; prohibited fields are dropped inside the recorder."""
-    if not trace_id:
-        return
-    trace_recorder.record(
-        trace_id,
-        name=name,
-        kind=kind,
-        latency_ms=SPAN_LATENCY_MS,
-        cost_mxn=cost_mxn,
-        attributes=attributes or {},
-    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://127.0.0.1:5173"],
@@ -544,9 +503,8 @@ def get_readiness() -> ReadinessResponse:
     Gate outcomes come from the deployment environment, never from the caller, so a public
     visitor cannot flip the smoke or live-model gates from a query string.
     """
-    global _served_first_request
-    cold_start = not _served_first_request
-    _served_first_request = True
+    cold_start = not state.served_first_request
+    state.served_first_request = True
     gates = release_gates(
         health_ok=True,
         smoke_ok=_environment_flag("SMOKE_CHECK_PASSED", default=True),
@@ -1617,7 +1575,7 @@ def contextual_chat(
     reply = answer_contextual_question(
         request.question,
         _recommendation_for_request(claims, request.vehicle_id, request.current_mileage_km),
-        language_provider,
+        state.language_provider,
     )
     _record_span(
         x_trace_id,
@@ -1625,7 +1583,7 @@ def contextual_chat(
         kind="provider",
         cost_mxn=PROVIDER_CALL_COST_MXN,
         attributes={
-            "model": language_provider.name,
+            "model": state.language_provider.name,
             "degraded": reply.degraded,
             "citation_page": reply.citation_page,
         },

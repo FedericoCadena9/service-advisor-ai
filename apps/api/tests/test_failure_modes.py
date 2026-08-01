@@ -121,7 +121,7 @@ def test_the_timeout_is_reported_as_504_to_the_advisor(monkeypatch: pytest.Monke
     def slow(*args: object, **kwargs: object) -> None:
         raise QueryTimeoutError("The query exceeded the strict timeout")
 
-    monkeypatch.setattr("service_advisor_api.main.semantic_gateway.run", slow)
+    monkeypatch.setattr("service_advisor_api.state.semantic_gateway.run", slow)
     response = client.post(
         "/service-questions",
         headers={"Authorization": f"Bearer {session.json()['token']}"},

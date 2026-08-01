@@ -95,7 +95,7 @@ def test_automatic_gates_block_a_release_but_the_live_gate_does_not() -> None:
 
 
 def test_readiness_reports_cold_start_then_ready(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("service_advisor_api.main._served_first_request", False)
+    monkeypatch.setattr("service_advisor_api.state.served_first_request", False)
     client = TestClient(app)
 
     first = client.get("/readiness").json()
