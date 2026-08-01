@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass
 from hashlib import sha256
+from typing import Literal
 
 
 class QuarantinedSourceError(ValueError):
@@ -22,6 +23,69 @@ class FallbackMarketEvidenceError(EvidenceUnavailableError):
         self.fallback_market = fallback_market
 
 
+DueState = Literal["overdue", "due_now", "due_soon", "informational"]
+NOT_IN_WINDOW = "Mileage is not in the reviewed service window"
+
+
+@dataclass(frozen=True)
+class FixedInterval:
+    """One published distance, the shape Toyota uses."""
+
+    km: int
+    due_soon_window_km: int = 2_000
+    overdue_grace_km: int = 2_000
+
+    def due_state(self, current_mileage_km: int) -> tuple[DueState, str]:
+        if current_mileage_km > self.km + self.overdue_grace_km:
+            return "overdue", f"Mileage exceeds the {self.km:,} km interval"
+        if current_mileage_km >= self.km:
+            return "due_now", f"Mileage reached the {self.km:,} km interval"
+        if current_mileage_km >= self.km - self.due_soon_window_km:
+            return "due_soon", f"Mileage is within {self.due_soon_window_km:,} km of the interval"
+        return "informational", NOT_IN_WINDOW
+
+
+@dataclass(frozen=True)
+class RangeInterval:
+    """A span rather than a point, the shape Ford publishes alongside its oil-life monitor."""
+
+    earliest_km: int
+    latest_km: int
+    due_soon_window_km: int = 800
+
+    def due_state(self, current_mileage_km: int) -> tuple[DueState, str]:
+        span = f"{self.earliest_km:,}-{self.latest_km:,} km"
+        if current_mileage_km > self.latest_km:
+            return "overdue", f"Mileage exceeds the {span} interval"
+        if current_mileage_km >= self.earliest_km:
+            return "due_now", f"Mileage is inside the {span} interval"
+        if current_mileage_km >= self.earliest_km - self.due_soon_window_km:
+            return "due_soon", f"Mileage is within {self.due_soon_window_km:,} km of {span}"
+        return "informational", NOT_IN_WINDOW
+
+
+@dataclass(frozen=True)
+class ConditionInterval:
+    """No published distance at all: the vehicle decides.
+
+    Honda's Maintenance Minder computes the service from engine condition, so an odometer
+    reading cannot establish that the service is due. Saying otherwise would be inventing a
+    number the manual does not contain.
+    """
+
+    monitor: str
+
+    def due_state(self, current_mileage_km: int) -> tuple[DueState, str]:
+        del current_mileage_km
+        return (
+            "informational",
+            f"{self.monitor} schedules this service by condition, not by distance",
+        )
+
+
+Interval = FixedInterval | RangeInterval | ConditionInterval
+
+
 @dataclass(frozen=True)
 class OfficialSource:
     market: str
@@ -30,6 +94,7 @@ class OfficialSource:
     citation_page: int
     citation_section: str
     review_state: str
+    source_url: str
     fallback_market: bool = False
 
 
@@ -39,10 +104,11 @@ class MaintenanceRule:
     version: str
     citation_page: int
     citation_section: str
-    interval_km: int = 48_000
-    due_soon_window_km: int = 2_000
-    overdue_grace_km: int = 2_000
+    interval: Interval
     immutable: bool = True
+
+    def due_state(self, current_mileage_km: int) -> tuple[DueState, str]:
+        return self.interval.due_state(current_mileage_km)
 
 
 @dataclass(frozen=True)
@@ -56,199 +122,183 @@ class ReviewedConfiguration:
     rule: MaintenanceRule
 
 
+RETRIEVED_ON = "2026-07-31"
+
+
 def _source(
     *,
-    market: str,
-    text: str,
-    retrieval_date: str,
+    source_url: str,
     citation_page: int,
     citation_section: str,
-    fallback_market: bool = False,
+    market: str = "United States",
+    fallback_market: bool = True,
 ) -> OfficialSource:
+    """Provenance for one reviewed document.
+
+    Every configuration here is a fallback: the research found no public Mexican schedule
+    that binds model, year, engine and drivetrain, so the manufacturer's United States
+    manual is what was actually read. The checksum covers the URL and the cited location,
+    which is what a reviewer verified.
+    """
     return OfficialSource(
         market=market,
-        checksum=sha256(text.encode()).hexdigest(),
-        retrieval_date=retrieval_date,
+        checksum=sha256(f"{source_url}#{citation_page}:{citation_section}".encode()).hexdigest(),
+        retrieval_date=RETRIEVED_ON,
         citation_page=citation_page,
         citation_section=citation_section,
         review_state="reviewed",
+        source_url=source_url,
         fallback_market=fallback_market,
     )
 
 
-HONDA_CONFIGURATIONS = (
-    ReviewedConfiguration(
-        make="Honda",
-        model="Civic",
-        engine="2.0L",
-        drivetrain="FWD",
-        market="Mexico",
-        source=_source(
-            market="Mexico",
-            text="Honda Civic Mexico maintenance minder reviewed source",
-            retrieval_date="2026-07-27",
-            citation_page=42,
-            citation_section="Maintenance Minder",
-        ),
-        rule=MaintenanceRule(
-            service_code="HONDA-A1",
-            version="honda-civic-2019-lx-v1",
-            citation_page=42,
-            citation_section="Maintenance Minder",
-            interval_km=48_000,
-        ),
-    ),
-    ReviewedConfiguration(
-        make="Honda",
-        model="CR-V",
-        engine="1.5T",
-        drivetrain="AWD",
-        market="Mexico",
-        source=_source(
-            market="Mexico",
-            text="Honda CR-V Mexico maintenance schedule reviewed source",
-            retrieval_date="2026-07-29",
-            citation_page=55,
-            citation_section="Programa de mantenimiento",
-        ),
-        rule=MaintenanceRule(
-            service_code="HONDA-B1",
-            version="honda-crv-2021-ex-v1",
-            citation_page=55,
-            citation_section="Programa de mantenimiento",
-            interval_km=40_000,
-        ),
-    ),
-    ReviewedConfiguration(
-        make="Honda",
-        model="Accord",
-        engine="1.5T",
-        drivetrain="FWD",
-        market="Mexico",
-        source=_source(
-            market="Mexico",
-            text="Honda Accord Mexico maintenance schedule reviewed source",
-            retrieval_date="2026-07-29",
-            citation_page=61,
-            citation_section="Programa de mantenimiento",
-        ),
-        rule=MaintenanceRule(
-            service_code="HONDA-A2",
-            version="honda-accord-2020-sport-v1",
-            citation_page=61,
-            citation_section="Programa de mantenimiento",
-            interval_km=32_000,
-        ),
-    ),
-)
-
-TOYOTA_CONFIGURATIONS = (
-    ReviewedConfiguration(
-        make="Toyota",
-        model="Corolla",
-        engine="2.0L",
-        drivetrain="FWD",
-        market="Mexico",
-        source=_source(
-            market="Mexico",
-            text="Toyota Corolla Mexico maintenance schedule reviewed source",
-            retrieval_date="2026-07-30",
-            citation_page=18,
-            citation_section="Programa de servicio",
-        ),
-        rule=MaintenanceRule(
-            service_code="TOYOTA-10K",
-            version="toyota-corolla-2022-le-v1",
-            citation_page=18,
-            citation_section="Programa de servicio",
-            interval_km=40_000,
-        ),
-    ),
-    ReviewedConfiguration(
-        make="Toyota",
-        model="RAV4",
-        engine="2.5L",
-        drivetrain="AWD",
-        market="Mexico",
-        source=_source(
-            market="Mexico",
-            text="Toyota RAV4 Mexico maintenance schedule reviewed source",
-            retrieval_date="2026-07-30",
-            citation_page=24,
-            citation_section="Programa de servicio",
-        ),
-        rule=MaintenanceRule(
-            service_code="TOYOTA-20K",
-            version="toyota-rav4-2021-xle-v1",
-            citation_page=24,
-            citation_section="Programa de servicio",
-            interval_km=48_000,
-        ),
-    ),
-    # No Mexican document has been reviewed for the Tacoma; the US schedule stays labeled.
-    ReviewedConfiguration(
-        make="Toyota",
-        model="Tacoma",
-        engine="3.5L",
-        drivetrain="4WD",
-        market="United States",
-        source=_source(
-            market="United States",
-            text="Toyota Tacoma United States maintenance schedule reviewed source",
-            retrieval_date="2026-07-30",
-            citation_page=31,
-            citation_section="Maintenance Schedule",
-            fallback_market=True,
-        ),
-        rule=MaintenanceRule(
-            service_code="TOYOTA-30K",
-            version="toyota-tacoma-2020-sr5-us-v1",
-            citation_page=31,
-            citation_section="Maintenance Schedule",
-            interval_km=48_000,
-        ),
-    ),
-)
-
-def _ford(
+def _configuration(
+    make: str,
     model: str,
     engine: str,
     drivetrain: str,
+    *,
     service_code: str,
     version: str,
+    source_url: str,
     citation_page: int,
-    interval_km: int,
+    citation_section: str,
+    interval: Interval,
 ) -> ReviewedConfiguration:
+    """One reviewed configuration. The vehicle is Mexican; the document is not."""
     return ReviewedConfiguration(
-        make="Ford",
+        make=make,
         model=model,
         engine=engine,
         drivetrain=drivetrain,
         market="Mexico",
         source=_source(
-            market="Mexico",
-            text=f"Ford {model} {engine} {drivetrain} Mexico maintenance schedule reviewed source",
-            retrieval_date="2026-07-31",
+            source_url=source_url,
             citation_page=citation_page,
-            citation_section="Programa de mantenimiento",
+            citation_section=citation_section,
         ),
         rule=MaintenanceRule(
             service_code=service_code,
             version=version,
             citation_page=citation_page,
-            citation_section="Programa de mantenimiento",
-            interval_km=interval_km,
+            citation_section=citation_section,
+            interval=interval,
         ),
     )
 
 
-# Engine and drivetrain are part of the key: the F-150 schedules differ per powertrain.
+# Honda publishes no distance for these services: the Maintenance Minder decides, and the
+# manual only attaches distances to sub-items such as C2 and C3.
+MAINTENANCE_MINDER = "Maintenance Minder"
+HONDA_CONFIGURATIONS = (
+    _configuration(
+        "Honda", "Civic", "2.0L", "FWD",
+        service_code="HONDA-A1",
+        version="honda-civic-2019-lx-us-v1",
+        source_url="https://owners.honda.com/utility/download?path=%2Fstatic%2Fpdfs%2F2019%2FCivic+Sedan%2F2019_Civic_4D_Maintenance_Minder.pdf",
+        citation_page=1,
+        citation_section="Maintenance Minder Service Codes",
+        interval=ConditionInterval(monitor=MAINTENANCE_MINDER),
+    ),
+    _configuration(
+        "Honda", "CR-V", "1.5T", "AWD",
+        service_code="HONDA-B1",
+        version="honda-crv-2021-ex-us-v1",
+        source_url="https://owners.honda.com/utility/download?path=%2Fstatic%2Fpdfs%2F2021%2FCR-V%2F2021_CR-V_Maintenance_Minder_System.PDF",
+        citation_page=1,
+        citation_section="To Use Maintenance Minder",
+        interval=ConditionInterval(monitor=MAINTENANCE_MINDER),
+    ),
+    _configuration(
+        "Honda", "Accord", "1.5T", "FWD",
+        service_code="HONDA-A2",
+        version="honda-accord-2020-sport-us-v1",
+        source_url="https://owners.honda.com/utility/download?path=%2Fstatic%2Fpdfs%2F2020%2FAccord+Sedan%2F2020_Accord_4D_Maintenance_Minder.pdf",
+        citation_page=1,
+        citation_section="Maintenance Minder Service Codes",
+        interval=ConditionInterval(monitor=MAINTENANCE_MINDER),
+    ),
+)
+
+# Toyota publishes a distance, in miles; these are the converted kilometres.
+TOYOTA_CONFIGURATIONS = (
+    _configuration(
+        "Toyota", "Corolla", "2.0L", "FWD",
+        service_code="TOYOTA-10K",
+        version="toyota-corolla-2022-le-us-v1",
+        source_url="https://assets.sia.toyota.com/publications/en/omms-s/T-MMS-22Corolla/pdf/T-MMS-22Corolla.pdf",
+        citation_page=38,
+        citation_section="Maintenance Log",
+        interval=FixedInterval(km=16_093),
+    ),
+    _configuration(
+        "Toyota", "RAV4", "2.5L", "AWD",
+        service_code="TOYOTA-20K",
+        version="toyota-rav4-2021-xle-us-v1",
+        source_url="https://assets.sia.toyota.com/publications/en/omms-s/T-MMS-21RAV4/pdf/T-MMS-21RAV4.pdf",
+        citation_page=38,
+        citation_section="Maintenance Log",
+        interval=FixedInterval(km=16_093),
+    ),
+    _configuration(
+        "Toyota", "Tacoma", "3.5L", "4WD",
+        service_code="TOYOTA-30K",
+        version="toyota-tacoma-2020-sr5-us-v1",
+        source_url="https://assets.sia.toyota.com/publications/en/omms-s/T-MMS-2086/pdf/T-MMS-2086.pdf",
+        citation_page=35,
+        citation_section="Using the Maintenance Log Charts",
+        interval=FixedInterval(km=12_070),
+    ),
+)
+
+# Ford publishes a span and an oil-life monitor, and gives 800 km as the grace after the
+# dashboard asks for the service.
 FORD_CONFIGURATIONS = (
-    _ford("F-150", "3.5L", "4WD", "FORD-SCHED-A", "ford-f150-2021-xlt-35-4wd-v1", 27, 16_000),
-    _ford("F-150", "5.0L", "RWD", "FORD-SCHED-B", "ford-f150-2021-xlt-50-rwd-v1", 29, 20_000),
-    _ford("Escape", "1.5L", "FWD", "FORD-SCHED-C", "ford-escape-2022-se-v1", 33, 16_000),
-    _ford("Explorer", "2.3L", "AWD", "FORD-SCHED-D", "ford-explorer-2020-xlt-v1", 39, 24_000),
-    _ford("Ranger", "2.3L", "4WD", "FORD-SCHED-E", "ford-ranger-2021-xlt-v1", 44, 16_000),
+    _configuration(
+        "Ford", "F-150", "3.5L", "4WD",
+        service_code="FORD-SCHED-A",
+        version="ford-f150-2021-xlt-35-4wd-us-v1",
+        source_url="https://www.fordservicecontent.com/Ford_Content/Catalog/owner_information/2021-Ford-F-150-Owners-Manual-version-2_om_EN-US_10_2021.pdf",
+        citation_page=667,
+        citation_section="Normal Scheduled Maintenance",
+        interval=RangeInterval(earliest_km=12_000, latest_km=16_000),
+    ),
+    _configuration(
+        "Ford", "F-150", "5.0L", "RWD",
+        service_code="FORD-SCHED-B",
+        version="ford-f150-2021-xlt-50-rwd-us-v1",
+        source_url="https://www.fordservicecontent.com/Ford_Content/Catalog/owner_information/2021-Ford-F-150-Owners-Manual-version-2_om_EN-US_10_2021.pdf",
+        citation_page=669,
+        citation_section="Other Maintenance Items",
+        interval=RangeInterval(earliest_km=12_000, latest_km=16_000),
+    ),
+    _configuration(
+        "Ford", "Escape", "1.5L", "FWD",
+        service_code="FORD-SCHED-C",
+        version="ford-escape-2022-se-us-v1",
+        source_url="https://www.fordservicecontent.com/Ford_Content/Catalog/owner_information/2022-Ford-Escape-Owners-Manual-version-1_om_EN-USA_09.2-2021.pdf",
+        citation_page=485,
+        citation_section="Normal Scheduled Maintenance",
+        interval=RangeInterval(earliest_km=12_000, latest_km=16_000),
+    ),
+    _configuration(
+        "Ford", "Explorer", "2.3L", "AWD",
+        service_code="FORD-SCHED-D",
+        version="ford-explorer-2020-xlt-us-v1",
+        source_url="https://www.fordservicecontent.com/Ford_Content/Catalog/owner_information/2020-Ford-Explorer-Gas-Hev-Owners-Manual-version-3_om_EN-US_03_2020.pdf",
+        citation_page=491,
+        citation_section="Normal Scheduled Maintenance",
+        interval=RangeInterval(earliest_km=12_070, latest_km=16_093),
+    ),
+    _configuration(
+        "Ford", "Ranger", "2.3L", "4WD",
+        service_code="FORD-SCHED-E",
+        version="ford-ranger-2021-xlt-us-v1",
+        source_url="https://www.fordservicecontent.com/Ford_Content/Catalog/owner_information/2021-Ford-Ranger-Owners-Manual-version-1_om_EN-US_10_2020.pdf",
+        citation_page=419,
+        citation_section="Normal Scheduled Maintenance",
+        interval=RangeInterval(earliest_km=12_000, latest_km=16_000),
+    ),
 )
 
 REVIEWED_CONFIGURATIONS: tuple[ReviewedConfiguration, ...] = (
@@ -295,7 +345,8 @@ class KnowledgePack:
 
     def reviewed_civic_rule(self) -> tuple[OfficialSource, MaintenanceRule]:
         return self.rule_for(
-            make="Honda", model="Civic", engine="2.0L", drivetrain="FWD", market="Mexico"
+            make="Honda", model="Civic", engine="2.0L", drivetrain="FWD", market="Mexico",
+            allow_fallback_market=True,
         )
 
     def ingest(self, content: str) -> None:

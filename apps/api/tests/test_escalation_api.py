@@ -100,7 +100,7 @@ def test_manager_approval_records_reason_snapshot_and_citations(repeated_decline
     assert decision["reason"] == "Customer accepted after a second decline"
     assert decision["escalation_reasons"] == ["Customer repeatedly declined a quoted service"]
     assert decision["facts"]["total_mxn"] == "1847.88"
-    assert decision["citations"]["citation_page"] == 42
+    assert decision["citations"]["citation_page"] == 1
 
 
 def test_escalated_approval_requires_a_recorded_reason(repeated_decline: None) -> None:
@@ -176,4 +176,4 @@ def test_audit_trail_is_manager_only_and_append_only() -> None:
     assert audit.status_code == 200
     assert len(entries) == 1
     assert entries[0]["approver_role"] == "advisor"
-    assert entries[0]["citations"]["rule_version"] == "honda-civic-2019-lx-v1"
+    assert entries[0]["citations"]["rule_version"] == "honda-civic-2019-lx-us-v1"

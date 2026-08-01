@@ -41,10 +41,9 @@ def test_every_case_records_the_agreed_expectations():
         else:
             assert case.permitted_tools == LLM_TOOL_ALLOWLIST
         if case.archetype in ("due_now", "due_soon", "overdue"):
-            if case.requires_fallback_review:
-                # Only a labeled foreign document exists, so the product cites nothing yet.
+            if case.expected_state == "informational":
+                # A condition-based rule has no mileage that makes it due.
                 assert case.expected_citation_page is None
-                assert case.expected_state == "informational"
             else:
                 assert case.expected_citation_page is not None
                 assert case.expected_service_code is not None
@@ -65,7 +64,7 @@ def test_report_retains_versioned_dataset_rule_prompt_and_provider_metadata():
     assert report.dataset_version == DATASET_VERSION
     assert report.prompt_version == "advisor-prompt-v1"
     assert report.provider == "deterministic"
-    assert "honda-civic-2019-lx-v1" in report.rule_versions
+    assert "honda-civic-2019-lx-us-v1" in report.rule_versions
     assert len(report.rule_versions) == 11
 
 

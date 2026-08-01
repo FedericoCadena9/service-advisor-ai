@@ -8,12 +8,12 @@ def test_reviewed_honda_source_keeps_provenance_and_section_evidence() -> None:
 
     source, rule = pack.reviewed_civic_rule()
 
-    assert source.market == "Mexico"
+    assert source.market == "United States"
     assert source.checksum
     assert source.review_state == "reviewed"
-    assert rule.version == "honda-civic-2019-lx-v1"
-    assert rule.citation_page == 42
-    assert rule.citation_section == "Maintenance Minder"
+    assert rule.version == "honda-civic-2019-lx-us-v1"
+    assert rule.citation_page == 1
+    assert rule.citation_section == "Maintenance Minder Service Codes"
 
 
 def test_suspicious_source_instructions_are_quarantined() -> None:

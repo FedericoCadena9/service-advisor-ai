@@ -9,9 +9,10 @@ from service_advisor_api.providers import (
     ProviderUnavailableError,
     select_provider,
 )
-from service_advisor_api.recommendations import evaluate_civic_maintenance
+from service_advisor_api.recommendations import evaluate_maintenance
 
-RECOMMENDATION = evaluate_civic_maintenance(48_000, "2026-07-31")
+COROLLA = {"make": "Toyota", "model": "Corolla", "engine": "2.0L", "drivetrain": "FWD", "market": "Mexico"}
+RECOMMENDATION = evaluate_maintenance(16_093, "2026-08-01", **COROLLA)
 
 
 class TimingOutProvider:
@@ -49,7 +50,7 @@ class CountingProvider:
         self.calls += 1
         if self.calls <= self._fail_times:
             raise ProviderTimeoutError("slow")
-        return "HONDA-A1 esta vencido segun la evidencia citada."
+        return "TOYOTA-10K esta vencido segun la evidencia citada."
 
 
 def test_a_timeout_degrades_to_the_deterministic_answer() -> None:
@@ -57,7 +58,7 @@ def test_a_timeout_degrades_to_the_deterministic_answer() -> None:
     reply = answer_contextual_question("¿Por que?", RECOMMENDATION, TimingOutProvider())
 
     assert reply.degraded is True
-    assert reply.citation_page == 42
+    assert reply.citation_page == 38
     assert "temporarily unavailable" in reply.text
 
 
@@ -66,7 +67,7 @@ def test_a_refused_connection_degrades_instead_of_raising() -> None:
     reply = answer_contextual_question("¿Por que?", RECOMMENDATION, RefusingProvider())
 
     assert reply.degraded is True
-    assert reply.citation_page == 42
+    assert reply.citation_page == 38
 
 
 @pytest.mark.parametrize(
@@ -93,13 +94,13 @@ def test_a_model_answer_that_invents_a_price_is_refused() -> None:
 
 
 def test_a_grounded_model_answer_is_delivered_with_its_citation() -> None:
-    grounded = "El interval de 48,000 km se alcanzo, segun HONDA-A1."
+    grounded = "El interval de 48,000 km se alcanzo, segun TOYOTA-10K."
 
     reply = answer_contextual_question("¿Por que?", RECOMMENDATION, GarbageProvider(grounded))
 
     assert reply.degraded is False
     assert reply.text == grounded
-    assert reply.citation_page == 42
+    assert reply.citation_page == 38
 
 
 def test_the_retry_is_bounded_to_one_attempt() -> None:
@@ -111,7 +112,7 @@ def test_the_retry_is_bounded_to_one_attempt() -> None:
     degraded = answer_contextual_question("¿Por que?", RECOMMENDATION, always_failing)
 
     assert recovered.degraded is False
-    assert recovered.text == "HONDA-A1 esta vencido segun la evidencia citada."
+    assert recovered.text == "TOYOTA-10K esta vencido segun la evidencia citada."
     assert recovering.calls == 2
     assert degraded.degraded is True
     assert always_failing.calls == 2

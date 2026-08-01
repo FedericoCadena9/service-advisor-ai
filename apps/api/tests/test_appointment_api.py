@@ -75,7 +75,7 @@ def test_preview_and_timeline_preserve_approved_text_citations_and_approver() ->
     assert delivered.json()["simulated"] is True
     assert delivered.json()["text"] == preview["text"]
     assert delivered.json()["approver_role"] == "advisor"
-    assert delivered.json()["citation_page"] == 42
+    assert delivered.json()["citation_page"] == 1
 
 
 def test_edited_message_that_invents_a_price_is_rejected() -> None:

@@ -5,11 +5,15 @@ from random import Random
 
 from service_advisor_api.approvals import LLM_TOOL_ALLOWLIST
 from service_advisor_api.knowledge import (
+    ConditionInterval,
     EvidenceUnavailableError,
     FallbackMarketEvidenceError,
+    FixedInterval,
+    Interval,
     KnowledgePack,
     MaintenanceRule,
     QuarantinedSourceError,
+    RangeInterval,
 )
 from service_advisor_api.operations import PartAvailability
 from service_advisor_api.quotes import draft_quote
@@ -133,6 +137,8 @@ def build_corpus() -> tuple[EvaluationCase, ...]:
         }
         # A fallback-market vehicle is graded on the path the product takes by default:
         # insufficient evidence until a reviewer accepts the foreign document.
+        # Every reviewed document is a labeled foreign fallback; the recommendation says so
+        # rather than refusing, so the expected state is unchanged by it.
         requires_fallback_review = _requires_fallback_review(pack, configuration)
         _, rule = pack.rule_for(**configuration, allow_fallback_market=True)
         for archetype in ARCHETYPES:
@@ -239,23 +245,11 @@ def _case(
     rule: MaintenanceRule,
     requires_fallback_review: bool = False,
 ) -> EvaluationCase:
-    mileage, expected_state = {
-        "due_now": (rule.interval_km, "due_now"),
-        "due_soon": (rule.interval_km - 1_000, "due_soon"),
-        "overdue": (rule.interval_km + rule.overdue_grace_km + 1, "overdue"),
-        "not_due": (max(rule.interval_km - 10_000, 0), "informational"),
-        "completed": (rule.interval_km, "completed"),
-        "declined": (rule.interval_km, "declined"),
-        "unavailable_part": (rule.interval_km, "unavailable"),
-        "insufficient_evidence": (rule.interval_km, "informational"),
-        "unsafe_sql": (0, "blocked"),
-        "prompt_injection": (0, "blocked"),
-    }[archetype]
+    mileage, expected_state = _archetype_mileage(archetype, rule)
     security = "blocked" if archetype in SECURITY_ARCHETYPES else "not_applicable"
-    actionable = archetype in ("due_now", "due_soon", "overdue", "completed", "declined")
-    if requires_fallback_review and security == "not_applicable":
-        # Until a reviewer accepts the foreign document the product answers "insufficient".
-        expected_state, actionable = "informational", False
+    # Actionability follows the state the rule can actually reach, not the archetype's name:
+    # a condition-based rule has no mileage that makes it due.
+    actionable = expected_state in ("due_now", "due_soon", "overdue", "completed", "declined")
     return EvaluationCase(
         id=f"{vehicle_id}:{archetype}",
         vehicle_id=vehicle_id,
@@ -274,6 +268,50 @@ def _case(
     )
 
 
+def _archetype_mileage(archetype: str, rule: MaintenanceRule) -> tuple[int, str]:
+    """Pick a mileage that lands the rule in the archetype's state, whatever its shape.
+
+    A condition-based rule has no distance that makes it due, so those cases expect the
+    manufacturer's own answer: the odometer does not decide.
+    """
+    due_now, due_soon, overdue, not_due = _probe_mileages(rule.interval)
+    states = {
+        "due_now": (due_now, "due_now"),
+        "due_soon": (due_soon, "due_soon"),
+        "overdue": (overdue, "overdue"),
+        "not_due": (not_due, "informational"),
+        "completed": (due_now, "completed"),
+        "declined": (due_now, "declined"),
+        "unavailable_part": (due_now, "unavailable"),
+        "insufficient_evidence": (due_now, "informational"),
+        "unsafe_sql": (0, "blocked"),
+        "prompt_injection": (0, "blocked"),
+    }
+    mileage, expected = states[archetype]
+    if isinstance(rule.interval, ConditionInterval) and expected in ("due_now", "due_soon", "overdue"):
+        # No mileage makes a condition-based rule due; the manufacturer's monitor decides.
+        return mileage, "informational"
+    return mileage, expected
+
+
+def _probe_mileages(interval: Interval) -> tuple[int, int, int, int]:
+    if isinstance(interval, FixedInterval):
+        return (
+            interval.km,
+            interval.km - 1_000,
+            interval.km + interval.overdue_grace_km + 1,
+            max(interval.km - 10_000, 0),
+        )
+    if isinstance(interval, RangeInterval):
+        return (
+            interval.earliest_km,
+            interval.earliest_km - interval.due_soon_window_km + 1,
+            interval.latest_km + 1,
+            max(interval.earliest_km - 10_000, 0),
+        )
+    return 48_000, 48_000, 48_000, 0
+
+
 def _vehicle_config(vehicle_id: str) -> dict[str, str]:
     for vehicle in canonical_vehicles():
         if vehicle["vehicle_id"] == vehicle_id:
@@ -289,7 +327,7 @@ def _grade_recommendation(case: EvaluationCase) -> CaseResult:
         case.mileage_km,
         "2026-07-31",
         **config,
-        allow_fallback_market=False,
+        allow_fallback_market=True,
         evidence_available=case.archetype != "insufficient_evidence",
         completed_services=history if case.archetype == "completed" else (),
         declined_services=(

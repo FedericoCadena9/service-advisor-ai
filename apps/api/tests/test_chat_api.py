@@ -36,7 +36,7 @@ def test_without_a_model_the_answer_is_the_grounded_fallback() -> None:
     body = _ask(TestClient(app))
 
     assert body["degraded"] is True
-    assert body["citation_page"] == 18
+    assert body["citation_page"] == 38
 
 
 def test_a_grounded_model_answer_is_returned_with_its_citation(
@@ -49,7 +49,7 @@ def test_a_grounded_model_answer_is_returned_with_its_citation(
 
     assert body["degraded"] is False
     assert body["text"] == grounded
-    assert body["citation_page"] == 18
+    assert body["citation_page"] == 38
 
 
 def test_a_provider_outage_answers_200_not_500(monkeypatch: pytest.MonkeyPatch) -> None:

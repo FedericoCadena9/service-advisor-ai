@@ -126,7 +126,9 @@ def _evaluate_for_vehicle(
     current_mileage_km: int,
     checked_in_on: str,
     *,
-    allow_fallback_market: bool = False,
+    # A labeled foreign document is answered with its label; a caller that will only accept
+    # a domestic one passes false and gets a refusal instead.
+    allow_fallback_market: bool = True,
 ) -> Recommendation:
     return evaluate_maintenance(
         current_mileage_km,
@@ -146,7 +148,9 @@ def _evaluate_for_vehicle(
 def get_recommendation(
     vehicle_id: str,
     claims: Annotated[SessionClaims, Depends(current_session)],
-    allow_fallback_market: bool = False,
+    # A labeled foreign document is answered with its label; a caller that will only accept
+    # a domestic one passes false and gets a refusal instead.
+    allow_fallback_market: bool = True,
     x_trace_id: Annotated[str | None, Header()] = None,
 ) -> RecommendationResponse:
     vehicle = state.vehicle_store.get(shop_id=claims.shop_id, vehicle_id=vehicle_id)

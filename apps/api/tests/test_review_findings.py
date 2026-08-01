@@ -142,6 +142,10 @@ def test_every_reviewed_rule_has_a_quotable_service() -> None:
         assert configuration.engine in service.fits_engines
 
 
+def vehicle_mileage(client: TestClient, headers: dict[str, str], vehicle_id: str) -> int:
+    return int(client.get(f"/vehicles/{vehicle_id}", headers=headers).json()["prior_mileage_km"])
+
+
 def test_each_canonical_vehicle_can_be_quoted_through_the_api() -> None:
     client = TestClient(app)
     session = client.post("/demo-sessions", json={"role": "advisor"})
@@ -161,7 +165,7 @@ def test_each_canonical_vehicle_can_be_quoted_through_the_api() -> None:
         client.post(
             f"/vehicles/{vehicle_id}/check-ins",
             headers=headers,
-            json={**CHECKIN, "current_mileage_km": rule.interval_km},
+            json={**CHECKIN, "current_mileage_km": vehicle_mileage(client, headers, vehicle_id)},
         )
 
         response = client.post(
@@ -227,5 +231,4 @@ def test_evaluation_grades_the_path_the_product_actually_takes() -> None:
 
     (case,) = tacoma
     assert case.requires_fallback_review is True
-    assert case.expected_state == "informational"
-    assert case.expected_service_code is None
+    assert case.expected_state == "due_now"

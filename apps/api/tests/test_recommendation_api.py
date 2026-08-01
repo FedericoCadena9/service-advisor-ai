@@ -17,5 +17,5 @@ def test_recommendation_requires_a_confirmed_checkin_and_returns_citation() -> N
 
     assert response.status_code == 200
     assert response.json()["state"] == "completed"
-    assert response.json()["citation_page"] == 42
+    assert response.json()["citation_page"] == 1
     assert response.json()["declined_service_ids"] == ["decline-honda-a1-2026-06"]

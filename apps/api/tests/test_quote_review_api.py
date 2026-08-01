@@ -51,9 +51,9 @@ def test_review_identifies_approver_services_facts_and_citations() -> None:
     assert review["facts"]["total_mxn"] == "1847.88"
     assert review["facts"]["bay_slot_id"] == "bay-1-morning"
     assert review["citations"] == {
-        "rule_version": "honda-civic-2019-lx-v1",
-        "citation_page": 42,
-        "citation_section": "Maintenance Minder",
+        "rule_version": "honda-civic-2019-lx-us-v1",
+        "citation_page": 1,
+        "citation_section": "Maintenance Minder Service Codes",
     }
     assert review["status"] == "in_review"
 

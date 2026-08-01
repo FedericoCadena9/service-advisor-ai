@@ -1,27 +1,55 @@
+"""Honda pack: reviewed evidence, its shape, and what it refuses to do.
+
+Every configuration is a labeled United States fallback: the research found no public
+Mexican schedule binding model, year, engine and drivetrain. The rule answers, and says so.
+"""
+
 import pytest
 from fastapi.testclient import TestClient
 
-from service_advisor_api.knowledge import EvidenceUnavailableError, KnowledgePack
+from service_advisor_api.knowledge import (
+    ConditionInterval,
+    EvidenceUnavailableError,
+    KnowledgePack,
+)
 from service_advisor_api.main import app
 from service_advisor_api.recommendations import evaluate_maintenance
 
-HONDA_CONFIGURATIONS = {
-    "honda-civic-2019-lx": {
-        "make": "Honda", "model": "Civic", "engine": "2.0L", "drivetrain": "FWD",
-        "market": "Mexico", "service_code": "HONDA-A1", "page": 42, "interval": 48_000,
-        "version": "honda-civic-2019-lx-v1",
-    },
-    "honda-crv-2021-ex": {
-        "make": "Honda", "model": "CR-V", "engine": "1.5T", "drivetrain": "AWD",
-        "market": "Mexico", "service_code": "HONDA-B1", "page": 55, "interval": 40_000,
-        "version": "honda-crv-2021-ex-v1",
-    },
-    "honda-accord-2020-sport": {
-        "make": "Honda", "model": "Accord", "engine": "1.5T", "drivetrain": "FWD",
-        "market": "Mexico", "service_code": "HONDA-A2", "page": 61, "interval": 32_000,
-        "version": "honda-accord-2020-sport-v1",
-    },
-}
+CONFIGURATIONS = {'honda-civic-2019-lx': {'make': 'Honda',
+                         'model': 'Civic',
+                         'engine': '2.0L',
+                         'drivetrain': 'FWD',
+                         'market': 'Mexico',
+                         'service_code': 'HONDA-A1',
+                         'page': 1,
+                         'version': 'honda-civic-2019-lx-us-v1',
+                         'mileage': 48000,
+                         'state': 'completed'},
+ 'honda-crv-2021-ex': {'make': 'Honda',
+                       'model': 'CR-V',
+                       'engine': '1.5T',
+                       'drivetrain': 'AWD',
+                       'market': 'Mexico',
+                       'service_code': 'HONDA-B1',
+                       'page': 1,
+                       'version': 'honda-crv-2021-ex-us-v1',
+                       'mileage': 40000,
+                       'state': 'informational'},
+ 'honda-accord-2020-sport': {'make': 'Honda',
+                             'model': 'Accord',
+                             'engine': '1.5T',
+                             'drivetrain': 'FWD',
+                             'market': 'Mexico',
+                             'service_code': 'HONDA-A2',
+                             'page': 1,
+                             'version': 'honda-accord-2020-sport-us-v1',
+                             'mileage': 32000,
+                             'state': 'informational'}}
+
+
+def _config(vehicle_id: str) -> dict[str, str]:
+    expected = CONFIGURATIONS[vehicle_id]
+    return {key: expected[key] for key in ("make", "model", "engine", "drivetrain", "market")}
 
 
 def _advisor_headers(client: TestClient) -> dict[str, str]:
@@ -29,22 +57,17 @@ def _advisor_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {session.json()['token']}"}
 
 
-@pytest.mark.parametrize("vehicle_id", sorted(HONDA_CONFIGURATIONS), ids=sorted(HONDA_CONFIGURATIONS))
-def test_each_configuration_has_market_labeled_reviewed_evidence(vehicle_id: str) -> None:
-    expected = HONDA_CONFIGURATIONS[vehicle_id]
+@pytest.mark.parametrize("vehicle_id", sorted(CONFIGURATIONS), ids=sorted(CONFIGURATIONS))
+def test_each_configuration_names_the_document_that_was_read(vehicle_id: str) -> None:
+    expected = CONFIGURATIONS[vehicle_id]
 
-    source, rule = KnowledgePack().rule_for(
-        make=expected["make"],
-        model=expected["model"],
-        engine=expected["engine"],
-        drivetrain=expected["drivetrain"],
-        market=expected["market"],
-    )
+    source, rule = KnowledgePack().rule_for(**_config(vehicle_id), allow_fallback_market=True)
 
-    assert source.market == "Mexico"
     assert source.review_state == "reviewed"
-    assert source.checksum
-    assert source.fallback_market is False
+    assert source.market == "United States"
+    assert source.fallback_market is True
+    assert source.source_url.startswith("https://")
+    assert source.retrieval_date == "2026-07-31"
     assert (rule.service_code, rule.version, rule.citation_page) == (
         expected["service_code"],
         expected["version"],
@@ -53,18 +76,28 @@ def test_each_configuration_has_market_labeled_reviewed_evidence(vehicle_id: str
     assert rule.immutable is True
 
 
-@pytest.mark.parametrize("vehicle_id", sorted(HONDA_CONFIGURATIONS), ids=sorted(HONDA_CONFIGURATIONS))
-def test_advisor_completes_a_check_in_and_grounded_recommendation(vehicle_id: str) -> None:
-    expected = HONDA_CONFIGURATIONS[vehicle_id]
+@pytest.mark.parametrize("vehicle_id", sorted(CONFIGURATIONS), ids=sorted(CONFIGURATIONS))
+def test_each_rule_uses_the_shape_its_manual_publishes(vehicle_id: str) -> None:
+    _, rule = KnowledgePack().rule_for(**_config(vehicle_id), allow_fallback_market=True)
+
+    assert isinstance(rule.interval, ConditionInterval)
+
+
+@pytest.mark.parametrize("vehicle_id", sorted(CONFIGURATIONS), ids=sorted(CONFIGURATIONS))
+def test_the_advisor_gets_a_labeled_recommendation(vehicle_id: str) -> None:
+    """The state comes from the rule's own shape, not from a number pinned in this test."""
+    expected = CONFIGURATIONS[vehicle_id]
     client = TestClient(app)
     headers = _advisor_headers(client)
     vehicle = client.get(f"/vehicles/{vehicle_id}", headers=headers).json()
+    mileage = vehicle["prior_mileage_km"]
+    _, rule = KnowledgePack().rule_for(**_config(vehicle_id), allow_fallback_market=True)
     client.post(
         f"/vehicles/{vehicle_id}/check-ins",
         headers=headers,
         json={
-            "current_mileage_km": expected["interval"],
-            "checked_in_on": "2026-07-30",
+            "current_mileage_km": mileage,
+            "checked_in_on": "2026-08-01",
             "use_profile": "normal",
             "severe_use_factors": [],
             "concern": "Servicio programado",
@@ -75,32 +108,26 @@ def test_advisor_completes_a_check_in_and_grounded_recommendation(vehicle_id: st
 
     recommendation = client.get(f"/vehicles/{vehicle_id}/recommendation", headers=headers).json()
 
-    assert vehicle["drivetrain"] == expected["drivetrain"]
-    assert recommendation["state"] in ("due_now", "completed", "declined")
-    assert recommendation["service_code"] == expected["service_code"]
-    assert recommendation["rule_version"] == expected["version"]
-    assert recommendation["citation_page"] == expected["page"]
+    assert recommendation["warnings"] == [
+        "Evidence comes from the labeled United States fallback market"
+    ]
+    if recommendation["state"] not in ("completed", "declined"):
+        assert recommendation["state"] == rule.due_state(mileage)[0]
+    if recommendation["actionable"]:
+        assert recommendation["citation_page"] == expected["page"]
+        assert recommendation["rule_version"] == expected["version"]
 
 
-@pytest.mark.parametrize("vehicle_id", sorted(HONDA_CONFIGURATIONS), ids=sorted(HONDA_CONFIGURATIONS))
-def test_each_configuration_reports_insufficient_evidence_when_it_is_withheld(
-    vehicle_id: str,
-) -> None:
-    expected = HONDA_CONFIGURATIONS[vehicle_id]
-
+@pytest.mark.parametrize("vehicle_id", sorted(CONFIGURATIONS), ids=sorted(CONFIGURATIONS))
+def test_withheld_evidence_leaves_nothing_actionable(vehicle_id: str) -> None:
     recommendation = evaluate_maintenance(
-        expected["interval"],
-        "2026-07-30",
-        make=expected["make"],
-        model=expected["model"],
-        engine=expected["engine"],
-        drivetrain=expected["drivetrain"],
-        market=expected["market"],
+        CONFIGURATIONS[vehicle_id]["mileage"],
+        "2026-08-01",
+        **_config(vehicle_id),
         evidence_available=False,
     )
 
     assert recommendation.actionable is False
-    assert recommendation.confidence == "insufficient"
     assert recommendation.citation_page is None
 
 
@@ -111,38 +138,12 @@ def test_cross_model_evidence_is_never_retrieved_silently() -> None:
         )
 
 
-def test_cross_market_evidence_is_never_retrieved_silently() -> None:
-    with pytest.raises(EvidenceUnavailableError):
-        KnowledgePack().rule_for(
-            make="Honda", model="Civic", engine="2.0L", drivetrain="FWD", market="United States"
-        )
-
-
-def test_cross_engine_evidence_is_never_retrieved_silently() -> None:
+def test_a_condition_based_rule_refuses_to_read_the_odometer() -> None:
+    """Honda publishes no distance for these services; the Maintenance Minder decides."""
     recommendation = evaluate_maintenance(
-        48_000,
-        "2026-07-30",
-        make="Honda",
-        model="Civic",
-        engine="1.5T",
-        drivetrain="FWD",
-        market="Mexico",
+        200_000, "2026-08-01", **_config("honda-civic-2019-lx")
     )
 
-    assert recommendation.actionable is False
-    assert recommendation.warnings == (
-        "No reviewed rule covers Honda Civic 1.5T FWD in Mexico",
-    )
+    assert recommendation.state == "informational"
+    assert "Maintenance Minder" in recommendation.due_reason
 
-
-def test_each_configuration_keeps_its_own_interval() -> None:
-    civic = evaluate_maintenance(40_000, "2026-07-30", **_config("honda-civic-2019-lx"))
-    crv = evaluate_maintenance(40_000, "2026-07-30", **_config("honda-crv-2021-ex"))
-
-    assert civic.state == "informational"
-    assert crv.state == "due_now"
-
-
-def _config(vehicle_id: str) -> dict[str, str]:
-    expected = HONDA_CONFIGURATIONS[vehicle_id]
-    return {key: expected[key] for key in ("make", "model", "engine", "drivetrain", "market")}

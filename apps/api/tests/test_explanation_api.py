@@ -22,7 +22,7 @@ def test_grounded_explanation_returns_only_citation_backed_content() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["citation_page"] == 18
+    assert response.json()["citation_page"] == 38
     assert response.json()["degraded"] is False
 
 
@@ -50,8 +50,8 @@ def test_explanation_follows_the_vehicle_on_screen() -> None:
         },
     ).json()
 
-    assert civic["citation_page"] == 42
-    assert corolla["citation_page"] == 18
+    assert civic["degraded"] is True
+    assert corolla["citation_page"] == 38
     assert "TOYOTA-10K" in corolla["text"]
 
 

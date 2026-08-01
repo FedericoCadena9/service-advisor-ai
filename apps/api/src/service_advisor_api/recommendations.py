@@ -1,11 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from service_advisor_api.knowledge import (
-    EvidenceUnavailableError,
-    KnowledgePack,
-    MaintenanceRule,
-)
+from service_advisor_api.knowledge import EvidenceUnavailableError, KnowledgePack
 from service_advisor_api.service_history import ServiceRecord
 
 DueState = Literal["overdue", "due_now", "due_soon", "completed", "declined", "informational"]
@@ -30,6 +26,8 @@ class Recommendation:
     confidence: str
     warnings: tuple[str, ...]
     declined_service_ids: tuple[str, ...] = ()
+    evidence_market: str | None = None
+    fallback_evidence: bool = False
 
 
 def evaluate_maintenance(
@@ -42,7 +40,7 @@ def evaluate_maintenance(
     drivetrain: str,
     market: str,
     evidence_available: bool = True,
-    allow_fallback_market: bool = False,
+    allow_fallback_market: bool = True,
     completed_services: tuple[ServiceRecord, ...] = (),
     declined_services: tuple[ServiceRecord, ...] = (),
 ) -> Recommendation:
@@ -66,23 +64,24 @@ def evaluate_maintenance(
         if source.fallback_market
         else ()
     )
+    labelled = {"evidence_market": source.market, "fallback_evidence": source.fallback_market}
 
     relevant_declines = tuple(
         record.id for record in declined_services if record.service_code == rule.service_code
     )
     if any(record.service_code == rule.service_code for record in completed_services):
-        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines)
+        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines, **labelled)
     if relevant_declines:
-        return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines)
+        return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines, **labelled)
 
-    state, reason = _due_state(current_mileage_km, rule)
+    state, reason = rule.due_state(current_mileage_km)
     actionable = state != "informational"
     return Recommendation(
         state=state, actionable=actionable, service_code=rule.service_code if actionable else None,
         rule_version=rule.version if actionable else None, due_reason=reason,
         citation_page=rule.citation_page if actionable else None,
         citation_section=rule.citation_section if actionable else None,
-        confidence="high" if actionable else "informational", warnings=warnings,
+        confidence="high" if actionable else "informational", warnings=warnings, **labelled,
     )
 
 
@@ -102,16 +101,6 @@ def evaluate_civic_maintenance(
         completed_services=completed_services,
         declined_services=declined_services,
     )
-
-
-def _due_state(current_mileage_km: int, rule: MaintenanceRule) -> tuple[DueState, str]:
-    if current_mileage_km > rule.interval_km + rule.overdue_grace_km:
-        return "overdue", f"Mileage exceeds the {rule.interval_km:,} km interval"
-    if current_mileage_km >= rule.interval_km:
-        return "due_now", f"Mileage reached the {rule.interval_km:,} km interval"
-    if current_mileage_km >= rule.interval_km - rule.due_soon_window_km:
-        return "due_soon", f"Mileage is within {rule.due_soon_window_km:,} km of the interval"
-    return "informational", "Mileage is not in the reviewed service window"
 
 
 def _insufficient(warning: str) -> Recommendation:
