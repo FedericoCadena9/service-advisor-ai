@@ -10,12 +10,17 @@ import {
   reserveAppointmentQuotesQuoteIdAppointmentPost,
 } from './generated/sdk.gen'
 
+/** Carries the HTTP status so callers can separate a refusal from an outage. */
+function requestFailed(message: string, response: { response?: { status?: number } }): Error {
+  return Object.assign(new Error(message), { status: response.response?.status })
+}
+
 export async function reserveAppointment(token: string, quoteId: string): Promise<AppointmentResponse> {
   const response = await reserveAppointmentQuotesQuoteIdAppointmentPost({
     headers: { authorization: `Bearer ${token}` },
     path: { quote_id: quoteId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Appointment unavailable')
+  if (!('data' in response) || !response.data) throw requestFailed('Appointment unavailable', response)
   return response.data
 }
 
@@ -24,7 +29,7 @@ export async function previewSms(token: string, quoteId: string): Promise<SmsPre
     headers: { authorization: `Bearer ${token}` },
     path: { quote_id: quoteId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Message preview unavailable')
+  if (!('data' in response) || !response.data) throw requestFailed('Message preview unavailable', response)
   return response.data
 }
 
@@ -34,7 +39,7 @@ export async function sendSms(token: string, quoteId: string, text: string): Pro
     headers: { authorization: `Bearer ${token}` },
     path: { quote_id: quoteId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Message was not enqueued')
+  if (!('data' in response) || !response.data) throw requestFailed('Message was not enqueued', response)
   return response.data
 }
 
@@ -43,6 +48,6 @@ export async function advanceMessage(token: string, deliveryId: string): Promise
     headers: { authorization: `Bearer ${token}` },
     path: { delivery_id: deliveryId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Message timeline unavailable')
+  if (!('data' in response) || !response.data) throw requestFailed('Message timeline unavailable', response)
   return response.data
 }

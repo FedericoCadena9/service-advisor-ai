@@ -30,12 +30,15 @@ export function CustomerTimelinePanel({
 
   if (!quoteId) return <p>Approve a quote to reserve an appointment and prepare a message.</p>
 
-  async function run(action: () => Promise<void>) {
+  /** A refusal and an outage need different words: one is the Advisor's to fix, the other is not. */
+  async function run(action: () => Promise<void>, unavailable: string, refused?: string) {
     try {
       await action()
       setError('')
-    } catch {
-      setError('The message was rejected because it is not supported by the approved quote')
+    } catch (failure) {
+      const status = (failure as { status?: number }).status
+      const isRefusal = typeof status === 'number' && status >= 400 && status < 500
+      setError(isRefusal && refused ? refused : unavailable)
     }
   }
 
@@ -45,7 +48,7 @@ export function CustomerTimelinePanel({
         onClick={() =>
           void run(async () => {
             setAppointment(await onReserve(quoteId))
-          })
+          }, 'The appointment could not be reserved', 'The appointment is no longer available')
         }
       >
         Reserve appointment
@@ -60,7 +63,7 @@ export function CustomerTimelinePanel({
             const next = await onPreview(quoteId)
             setPreview(next)
             setText(next.text)
-          })
+          }, 'The message preview is unavailable')
         }
       >
         Preview message
@@ -72,9 +75,13 @@ export function CustomerTimelinePanel({
           <p>{`${preview.segments} segment(s) · ${preview.priorities.length} priorities`}</p>
           <Button
             onClick={() =>
-              void run(async () => {
-                setDelivery(await onSend(quoteId, text))
-              })
+              void run(
+                async () => {
+                  setDelivery(await onSend(quoteId, text))
+                },
+                'The message could not be sent right now',
+                'The message was rejected because it is not supported by the approved quote',
+              )
             }
           >
             Enqueue message
@@ -89,7 +96,7 @@ export function CustomerTimelinePanel({
             onClick={() =>
               void run(async () => {
                 setDelivery(await onAdvance(delivery.id))
-              })
+              }, 'The timeline could not be advanced')
             }
           >
             Advance timeline
