@@ -43,6 +43,8 @@ import { confirmTranscript, recordVoiceNote } from "./api/voice";
 import { QualityDashboard } from "./components/advisor/QualityDashboard";
 import { RecommendationConsole } from "./components/advisor/RecommendationConsole";
 import { VoiceCheckinPanel } from "./components/advisor/VoiceCheckinPanel";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type HealthState = "loading" | "waking" | "healthy" | "unavailable";
 
@@ -323,24 +325,24 @@ export default function App() {
             aria-labelledby="workspace-heading"
             className="mx-auto max-w-6xl space-y-5"
           >
-            <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                  Live demo workspace
+                <p className="text-sm text-muted-foreground">
+                  Service desk / Today
                 </p>
                 <h2
                   id="workspace-heading"
-                  className="mt-1 text-xl font-semibold"
+                  className="mt-1 text-2xl font-semibold tracking-tight"
                 >
-                  Protected demo workspace
+                  Vehicle intake
                 </h2>
               </div>
-              <div className="flex gap-2 text-xs">
-                <span className="rounded-full bg-primary/15 px-3 py-1.5 font-medium capitalize text-primary">
-                  Role: {workspace.role}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="hidden rounded-full bg-muted px-3 py-1.5 capitalize sm:inline">
+                  {workspace.role}
                 </span>
-                <span className="rounded-full bg-muted px-3 py-1.5 text-muted-foreground">
-                  Shop: {workspace.shop_id}
+                <span className="rounded-full border border-border bg-card px-3 py-1.5">
+                  {workspace.shop_id}
                 </span>
               </div>
             </div>
@@ -350,16 +352,14 @@ export default function App() {
               className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-end"
             >
               <div className="flex-1">
-                <label
-                  htmlFor="vehicle-search"
-                  className="mb-1.5 block text-sm font-medium"
-                >
+                <Label htmlFor="vehicle-search" className="mb-2 text-sm">
                   Search demo vehicle
-                </label>
-                <input
+                </Label>
+                <Input
                   id="vehicle-search"
                   name="vehicle-search"
                   type="search"
+                  placeholder="Plate, VIN, or customer name"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />
@@ -393,14 +393,19 @@ export default function App() {
             >
               <div className="space-y-5">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                    01 · Intake
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+                      Step 1 of 3
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      Customer & vehicle context
+                    </span>
+                  </div>
                   <h3
                     id="checkin-heading"
                     className="mt-1 text-xl font-semibold"
                   >
-                    Vehicle check-in
+                    Check-in details
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Capture the operating context before any recommendation is
@@ -409,13 +414,10 @@ export default function App() {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label
-                      htmlFor="current-mileage"
-                      className="mb-1.5 block text-sm font-medium"
-                    >
+                    <Label htmlFor="current-mileage" className="mb-2">
                       Current mileage (km)
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="current-mileage"
                       type="number"
                       min="42500"
@@ -427,12 +429,9 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label
-                      htmlFor="use-profile"
-                      className="mb-1.5 block text-sm font-medium"
-                    >
+                    <Label htmlFor="use-profile" className="mb-2">
                       Use profile
-                    </label>
+                    </Label>
                     <select
                       id="use-profile"
                       value={useProfile}
@@ -446,13 +445,10 @@ export default function App() {
                   </div>
                 </div>
                 <div>
-                  <label
-                    htmlFor="severe-use-factors"
-                    className="mb-1.5 block text-sm font-medium"
-                  >
+                  <Label htmlFor="severe-use-factors" className="mb-2">
                     Severe use factors
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     id="severe-use-factors"
                     value={severeUseFactors}
                     onChange={(event) =>
@@ -461,12 +457,9 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="concern"
-                    className="mb-1.5 block text-sm font-medium"
-                  >
+                  <Label htmlFor="concern" className="mb-2">
                     Written concern
-                  </label>
+                  </Label>
                   <textarea
                     id="concern"
                     required
@@ -475,13 +468,10 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="appointment-window"
-                    className="mb-1.5 block text-sm font-medium"
-                  >
+                  <Label htmlFor="appointment-window" className="mb-2">
                     Desired appointment window
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     id="appointment-window"
                     required
                     value={appointmentWindow}
@@ -490,7 +480,7 @@ export default function App() {
                     }
                   />
                 </div>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                <Label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
                   <input
                     id="message-consent"
                     type="checkbox"
@@ -498,10 +488,10 @@ export default function App() {
                     onChange={(event) =>
                       setMessageConsent(event.target.checked)
                     }
-                    className="size-4 accent-[oklch(0.76_0.16_64)]"
+                    className="size-4 rounded border-input text-primary accent-primary"
                   />
                   Consent to prepare a message
-                </label>
+                </Label>
                 <button
                   type="submit"
                   className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-110"
