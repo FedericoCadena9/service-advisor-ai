@@ -56,8 +56,11 @@ export function RecommendationConsole({
   const [answer, setAnswer] = useState("");
   const [quoteId, setQuoteId] = useState<string | null>(null);
   return (
-    <Card className="mt-6 border border-white/10 bg-[#20201c]/95 py-0 shadow-2xl shadow-black/20">
-      <CardHeader className="border-b border-white/10 px-5 py-5 sm:px-6">
+    <Card
+      className="mt-6 border border-border bg-card py-0 shadow-sm"
+      id="schedule"
+    >
+      <CardHeader className="border-b border-border px-5 py-5 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -91,7 +94,7 @@ export function RecommendationConsole({
           </AlertDescription>
         </Alert>
         <Tabs defaultValue="evidence" className="space-y-4">
-          <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-lg border border-white/10 bg-black/15 p-1">
+          <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-lg border border-border bg-muted p-1">
             <TabsTrigger value="evidence">Evidence</TabsTrigger>
             <TabsTrigger value="run">Advisor run</TabsTrigger>
             <TabsTrigger value="explain">Explain</TabsTrigger>
@@ -102,7 +105,7 @@ export function RecommendationConsole({
           </TabsList>
           <TabsContent
             value="evidence"
-            className="rounded-xl border border-white/10 bg-black/15 p-5 text-sm leading-6 text-muted-foreground"
+            className="rounded-xl border border-border bg-muted/40 p-5 text-sm leading-6 text-muted-foreground"
           >
             <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
               <BookOpenCheck className="size-4 text-primary" /> Reviewed manual
@@ -112,7 +115,7 @@ export function RecommendationConsole({
           </TabsContent>
           <TabsContent
             value="run"
-            className="rounded-xl border border-white/10 bg-black/15 p-5"
+            className="rounded-xl border border-border bg-muted/40 p-5"
           >
             <Progress value={72} className="h-2" />
             <p className="mt-3 text-sm text-muted-foreground">{runState}</p>
@@ -140,7 +143,7 @@ export function RecommendationConsole({
           </TabsContent>
           <TabsContent
             value="explain"
-            className="rounded-xl border border-white/10 bg-black/15 p-5"
+            className="rounded-xl border border-border bg-muted/40 p-5"
           >
             <label
               className="mb-1.5 block text-sm font-medium"
@@ -168,13 +171,13 @@ export function RecommendationConsole({
           </TabsContent>
           <TabsContent
             value="quote"
-            className="rounded-xl border border-white/10 bg-black/15 p-5"
+            className="rounded-xl border border-border bg-muted/40 p-5"
           >
             <QuoteDraftPanel onDraft={onDraftQuote} />
           </TabsContent>
           <TabsContent
             value="approval"
-            className="rounded-xl border border-white/10 bg-black/15 p-5"
+            className="rounded-xl border border-border bg-muted/40 p-5"
           >
             <QuoteApprovalPanel
               onOpenReview={onOpenReview}
@@ -184,19 +187,19 @@ export function RecommendationConsole({
           </TabsContent>
           <TabsContent
             value="timeline"
-            className="rounded-xl border border-white/10 bg-black/15 p-5"
+            className="rounded-xl border border-border bg-muted/40 p-5"
           >
             <CustomerTimelinePanel quoteId={quoteId} {...timeline} />
           </TabsContent>
           <TabsContent
             value="data"
-            className="rounded-xl border border-white/10 bg-black/15 p-5"
+            className="rounded-xl border border-border bg-muted/40 p-5"
           >
             <ServiceQuestionPanel onAskData={onAskData} />
           </TabsContent>
         </Tabs>
         {!recommendation && (
-          <p className="flex gap-2 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100">
+          <p className="flex gap-2 rounded-lg border border-amber-300/40 bg-amber-50 p-3 text-sm text-amber-800">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
             Evidence is intentionally absent until check-in is confirmed.
           </p>

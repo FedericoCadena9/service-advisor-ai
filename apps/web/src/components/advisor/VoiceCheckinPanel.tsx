@@ -76,12 +76,12 @@ export function VoiceCheckinPanel({
         Transcribe voice note
       </Button>
       {note?.state === "failed" && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {note.failure_reason}
         </p>
       )}
       {note && note.state !== "failed" && (
-        <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
+        <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3">
           <ul
             aria-label="Transcript timestamps"
             className="space-y-1 text-xs text-muted-foreground"
@@ -117,12 +117,12 @@ export function VoiceCheckinPanel({
         </div>
       )}
       {note?.state === "confirmed" && (
-        <p className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+        <p className="rounded-lg border border-emerald-400/35 bg-emerald-50 p-3 text-sm text-emerald-800">
           Transcript confirmed and audio deleted
         </p>
       )}
       {error && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </p>
       )}

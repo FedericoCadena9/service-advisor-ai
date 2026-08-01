@@ -59,7 +59,7 @@ export function QuoteApprovalPanel({
       </p>
       <Button onClick={() => void openReview()}>Open approval</Button>
       {review && (
-        <dl className="grid gap-3 rounded-lg border border-white/10 bg-black/15 p-4 text-sm sm:grid-cols-2 [&_dt]:text-xs [&_dt]:uppercase [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dd]:mt-1 [&_dd]:font-medium">
+        <dl className="grid gap-3 rounded-lg border border-border bg-muted/40 p-4 text-sm sm:grid-cols-2 [&_dt]:text-xs [&_dt]:uppercase [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dd]:mt-1 [&_dd]:font-medium">
           <dt>Approver</dt>
           <dd>{`${review.approver_role} · session ${review.approver_session_id}`}</dd>
           <dt>Selected services</dt>
@@ -73,7 +73,7 @@ export function QuoteApprovalPanel({
       {review?.evidence_blocked && (
         <p
           role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
         >{`Not approvable by any role: ${review.blocking_reason}`}</p>
       )}
       {review?.escalation_required && !review.evidence_blocked && (
@@ -103,7 +103,7 @@ export function QuoteApprovalPanel({
       {decision && (
         <p
           role="status"
-          className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100"
+          className="rounded-lg border border-emerald-400/35 bg-emerald-50 p-3 text-sm text-emerald-800"
         >
           {decision.decision === "approved"
             ? `Quote ${decision.quote_id} approved by ${decision.approver_role}`
@@ -113,7 +113,7 @@ export function QuoteApprovalPanel({
       {error && (
         <p
           role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
         >
           {error}
         </p>

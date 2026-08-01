@@ -8,12 +8,10 @@ function renderConsole(
 ) {
   const props = {
     recommendation: undefined,
-    onStartRun: vi
-      .fn()
-      .mockResolvedValue({
-        id: "run-1",
-        events: ["started", "awaiting_human_review"],
-      }),
+    onStartRun: vi.fn().mockResolvedValue({
+      id: "run-1",
+      events: ["started", "awaiting_human_review"],
+    }),
     onApproveRun: vi.fn().mockResolvedValue(undefined),
     onAsk: vi.fn().mockResolvedValue("HONDA-A1 is due now, page 42."),
     onDraftQuote: vi.fn().mockResolvedValue({

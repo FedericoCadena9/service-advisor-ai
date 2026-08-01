@@ -40,11 +40,11 @@ export function ServiceQuestionPanel({
         Run read-only query
       </Button>
       {result && (
-        <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-4">
+        <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4">
           <p>{result.answer}</p>
           <pre
             aria-label="Accepted SQL"
-            className="overflow-x-auto rounded-md border border-white/10 bg-black/30 p-3 text-xs text-primary"
+            className="overflow-x-auto rounded-md border border-border bg-card p-3 text-xs text-primary"
           >
             {result.sql}
           </pre>

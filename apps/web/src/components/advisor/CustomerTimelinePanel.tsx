@@ -70,7 +70,7 @@ export function CustomerTimelinePanel({
         Reserve appointment
       </Button>
       {appointment && (
-        <p className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100">{`Simulated reservation ${appointment.bay_slot_id} at ${appointment.starts_at}`}</p>
+        <p className="rounded-lg border border-emerald-400/35 bg-emerald-50 p-3 text-sm text-emerald-800">{`Simulated reservation ${appointment.bay_slot_id} at ${appointment.starts_at}`}</p>
       )}
       <Button
         className="mt-2"
@@ -85,7 +85,7 @@ export function CustomerTimelinePanel({
         Preview message
       </Button>
       {preview && (
-        <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-4">
+        <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4">
           <label className="block text-sm font-medium" htmlFor="sms-text">
             Message to the customer
           </label>
@@ -129,7 +129,7 @@ export function CustomerTimelinePanel({
         </div>
       )}
       {error && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </p>
       )}

@@ -18,13 +18,13 @@ export function QualityDashboard({
 
   if (error)
     return (
-      <p className="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-red-100">
+      <p className="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
         {error}
       </p>
     );
   if (!dashboard)
     return (
-      <p className="mt-6 rounded-xl border border-white/10 bg-white/[0.035] p-4 text-sm text-muted-foreground">
+      <p className="mt-6 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
         Loading quality dashboard
       </p>
     );
@@ -32,7 +32,7 @@ export function QualityDashboard({
   return (
     <section
       aria-labelledby="dashboard-heading"
-      className="mt-6 rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-6"
+      className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
     >
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
         Manager controls
@@ -44,25 +44,25 @@ export function QualityDashboard({
         Evidence coverage, runtime discipline, and escalation outcomes.
       </p>
       <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="rounded-xl border border-white/10 bg-black/15 p-4">
+        <div className="rounded-lg border border-border bg-muted/40 p-4">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
             Citation rate
           </dt>
           <dd className="mt-2 text-2xl font-semibold text-primary">{`${Math.round(dashboard.citation_rate * 100)}%`}</dd>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/15 p-4">
+        <div className="rounded-lg border border-border bg-muted/40 p-4">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
             Latency
           </dt>
           <dd className="mt-2 text-sm font-medium leading-6">{`p50 ${dashboard.p50_latency_ms} ms · p95 ${dashboard.p95_latency_ms} ms`}</dd>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/15 p-4">
+        <div className="rounded-lg border border-border bg-muted/40 p-4">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
             Cost
           </dt>
           <dd className="mt-2 text-sm font-medium leading-6">{`${dashboard.total_cost_mxn} MXN across ${dashboard.span_count} spans`}</dd>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/15 p-4">
+        <div className="rounded-lg border border-border bg-muted/40 p-4">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
             Evaluation
           </dt>
@@ -72,7 +72,7 @@ export function QualityDashboard({
             }`}
           </dd>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/15 p-4">
+        <div className="rounded-lg border border-border bg-muted/40 p-4">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
             Escalation outcomes
           </dt>

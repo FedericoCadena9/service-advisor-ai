@@ -31,12 +31,12 @@ export function QuoteDraftPanel({
       <Button onClick={() => void requestDraft()}>Draft quote</Button>
       {error && <p role="alert">{error}</p>}
       {draft && (
-        <div className="overflow-x-auto rounded-lg border border-white/10">
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <table
             aria-label="Quote draft lines"
             className="w-full min-w-180 text-left text-sm"
           >
-            <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="bg-muted text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th scope="col">Service</th>
                 <th scope="col">Labor MXN</th>
