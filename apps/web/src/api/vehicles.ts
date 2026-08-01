@@ -1,5 +1,6 @@
 import type { VehicleSearchResponse } from './generated/types.gen'
 import { searchVehiclesVehiclesSearchGet } from './generated/sdk.gen'
+import { requestFailed } from './failure'
 
 export async function searchDemoVehicles(
   token: string,
@@ -11,7 +12,7 @@ export async function searchDemoVehicles(
   })
 
   if (!('data' in response) || !response.data) {
-    throw new Error('Vehicle search failed')
+    throw requestFailed('Vehicle search failed', response)
   }
 
   return response.data

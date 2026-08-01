@@ -1,5 +1,6 @@
 import type { CheckinRequest, CheckinResponse } from './generated/types.gen'
 import { createCheckinVehiclesVehicleIdCheckInsPost } from './generated/sdk.gen'
+import { requestFailed } from './failure'
 
 export async function saveCheckin(
   token: string,
@@ -12,7 +13,7 @@ export async function saveCheckin(
   })
 
   if (!('data' in response) || !response.data) {
-    throw new Error('Check-in could not be saved')
+    throw requestFailed('Check-in could not be saved', response)
   }
 
   return response.data

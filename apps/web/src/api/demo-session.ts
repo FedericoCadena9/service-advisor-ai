@@ -3,6 +3,7 @@ import {
   createSessionDemoSessionsPost,
   getWorkspaceWorkspaceGet,
 } from './generated/sdk.gen'
+import { requestFailed } from './failure'
 
 export async function enterDemoWorkspace(
   role: CreateDemoSessionRequest['role'],
@@ -10,7 +11,7 @@ export async function enterDemoWorkspace(
   const session = await createSessionDemoSessionsPost({ body: { role } })
 
   if (!('data' in session) || !session.data) {
-    throw new Error('Demo session could not be created')
+    throw requestFailed('Demo session could not be created', session)
   }
 
   const workspace = await getWorkspaceWorkspaceGet({
@@ -18,7 +19,7 @@ export async function enterDemoWorkspace(
   })
 
   if (!('data' in workspace) || !workspace.data) {
-    throw new Error('Protected workspace could not be loaded')
+    throw requestFailed('Protected workspace could not be loaded', workspace)
   }
 
   return { token: session.data.token, workspace: workspace.data }

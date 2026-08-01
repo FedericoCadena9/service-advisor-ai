@@ -3,13 +3,14 @@ import {
   confirmVoiceNoteVoiceNotesNoteIdConfirmationPost,
   createVoiceNoteVoiceNotesPost,
 } from './generated/sdk.gen'
+import { requestFailed } from './failure'
 
 export async function recordVoiceNote(token: string, note: VoiceNoteRequest): Promise<VoiceNoteResponse> {
   const response = await createVoiceNoteVoiceNotesPost({
     body: note,
     headers: { authorization: `Bearer ${token}` },
   })
-  if (!('data' in response) || !response.data) throw new Error('Voice note could not be transcribed')
+  if (!('data' in response) || !response.data) throw requestFailed('Voice note could not be transcribed', response)
   return response.data
 }
 
@@ -19,6 +20,6 @@ export async function confirmTranscript(token: string, noteId: string, transcrip
     headers: { authorization: `Bearer ${token}` },
     path: { note_id: noteId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Transcript could not be confirmed')
+  if (!('data' in response) || !response.data) throw requestFailed('Transcript could not be confirmed', response)
   return response.data
 }

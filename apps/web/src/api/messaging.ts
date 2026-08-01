@@ -9,11 +9,7 @@ import {
   previewSmsQuotesQuoteIdSmsPreviewPost,
   reserveAppointmentQuotesQuoteIdAppointmentPost,
 } from './generated/sdk.gen'
-
-/** Carries the HTTP status so callers can separate a refusal from an outage. */
-function requestFailed(message: string, response: { response?: { status?: number } }): Error {
-  return Object.assign(new Error(message), { status: response.response?.status })
-}
+import { requestFailed } from './failure'
 
 export async function reserveAppointment(token: string, quoteId: string): Promise<AppointmentResponse> {
   const response = await reserveAppointmentQuotesQuoteIdAppointmentPost({

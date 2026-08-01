@@ -5,6 +5,7 @@ import {
 } from './generated/sdk.gen'
 import type { AdvisorContext } from './advisor-context'
 import { traceHeaders } from './advisor-context'
+import { requestFailed } from './failure'
 
 export async function openQuoteReview(
   token: string,
@@ -16,7 +17,7 @@ export async function openQuoteReview(
     headers: { authorization: `Bearer ${token}`, ...traceHeaders(context) },
     path: { vehicle_id: context.vehicleId },
   })
-  if (!('data' in response) || !response.data) throw Object.assign(new Error('Quote review unavailable'), { status: response.response?.status })
+  if (!('data' in response) || !response.data) throw requestFailed('Quote review unavailable', response)
   return response.data
 }
 
@@ -31,6 +32,6 @@ export async function decideQuoteReview(
     headers: { authorization: `Bearer ${token}`, ...traceHeaders(options.context) },
     path: { review_id: reviewId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Quote decision was not saved')
+  if (!('data' in response) || !response.data) throw requestFailed('Quote decision was not saved', response)
   return response.data
 }
