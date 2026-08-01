@@ -38,6 +38,49 @@ APPROVED_SMS = {
 }
 
 
+def test_main_only_composes_the_feature_routers() -> None:
+    """What if a future endpoint is added to main instead of its feature router?"""
+    import ast
+    from pathlib import Path
+
+    source = ast.parse(
+        Path(__file__).resolve().parents[1].joinpath("src/service_advisor_api/main.py").read_text()
+    )
+    registrations = {
+        call.args[0].value.id
+        for call in ast.walk(source)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "include_router"
+        and call.args
+        and isinstance(call.args[0], ast.Attribute)
+        and isinstance(call.args[0].value, ast.Name)
+    }
+    app_routes = [
+        decorator
+        for node in source.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for decorator in node.decorator_list
+        if isinstance(decorator, ast.Call)
+        and isinstance(decorator.func, ast.Attribute)
+        and isinstance(decorator.func.value, ast.Name)
+        and decorator.func.value.id == "app"
+    ]
+
+    assert registrations == {
+        "admin",
+        "appointments",
+        "health",
+        "insights",
+        "quotes",
+        "runs",
+        "sessions",
+        "vehicles",
+        "voice",
+    }
+    assert app_routes == []
+
+
 # 1. Text-to-SQL
 
 
@@ -480,11 +523,15 @@ def test_every_emitted_span_attribute_survives_the_allowlist() -> None:
 
     from service_advisor_api.observability import ALLOWED_ATTRIBUTES
 
-    source = ast.parse(Path(__file__).resolve().parents[1].joinpath(
-        "src/service_advisor_api/main.py"
-    ).read_text())
+    router_sources = [
+        ast.parse(path.read_text())
+        for path in Path(__file__).resolve().parents[1]
+        .joinpath("src/service_advisor_api/routers")
+        .glob("*.py")
+    ]
     emitted = {
         key.value
+        for source in router_sources
         for node in ast.walk(source)
         if isinstance(node, ast.keyword) and node.arg == "attributes"
         if isinstance(node.value, ast.Dict)
