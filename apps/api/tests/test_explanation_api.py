@@ -16,7 +16,7 @@ def test_grounded_explanation_returns_only_citation_backed_content() -> None:
         headers=_advisor_headers(client),
         json={
             "vehicle_id": "toyota-corolla-2022-le",
-            "current_mileage_km": 40_000,
+            "current_mileage_km": 48_500,
             "evidence_available": True,
         },
     )
@@ -45,7 +45,7 @@ def test_explanation_follows_the_vehicle_on_screen() -> None:
         headers=headers,
         json={
             "vehicle_id": "toyota-corolla-2022-le",
-            "current_mileage_km": 40_000,
+            "current_mileage_km": 48_500,
             "evidence_available": True,
         },
     ).json()
@@ -63,7 +63,7 @@ def test_explanation_refuses_an_unknown_vehicle() -> None:
         headers=_advisor_headers(client),
         json={
             "vehicle_id": "ghost-vehicle",
-            "current_mileage_km": 40_000,
+            "current_mileage_km": 48_500,
             "evidence_available": True,
         },
     )

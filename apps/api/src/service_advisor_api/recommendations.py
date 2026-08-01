@@ -69,12 +69,32 @@ def evaluate_maintenance(
     relevant_declines = tuple(
         record.id for record in declined_services if record.service_code == rule.service_code
     )
-    if any(record.service_code == rule.service_code for record in completed_services):
-        return Recommendation("completed", False, rule.service_code, rule.version, "Equivalent service is completed", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines, **labelled)
+    # An interval repeats, so what matters is the distance driven since the last equivalent
+    # service. With no history the odometer is all the evidence there is.
+    last_service = max(
+        (
+            record.odometer_km
+            for record in completed_services
+            if record.service_code == rule.service_code
+        ),
+        default=None,
+    )
+    # An odometer below the last recorded service is bad data, not a finished cycle; the
+    # distance floors at zero rather than going negative.
+    travelled = (
+        max(current_mileage_km - last_service, 0)
+        if last_service is not None
+        else current_mileage_km
+    )
+
+    state, reason = rule.due_state(travelled)
+    if last_service is not None and state == "informational":
+        return Recommendation("completed", False, rule.service_code, rule.version, f"Equivalent service was completed {travelled:,} km ago", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines, **labelled)
+    # A decline stays visible even when the cycle has come due again: that history is the
+    # reason an Advisor should not simply re-offer the same work.
     if relevant_declines:
         return Recommendation("declined", False, rule.service_code, rule.version, "Prior decline remains visible", rule.citation_page, rule.citation_section, "high", warnings, relevant_declines, **labelled)
 
-    state, reason = rule.due_state(current_mileage_km)
     actionable = state != "informational"
     return Recommendation(
         state=state, actionable=actionable, service_code=rule.service_code if actionable else None,

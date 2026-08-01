@@ -322,7 +322,10 @@ def _vehicle_config(vehicle_id: str) -> dict[str, str]:
 def _grade_recommendation(case: EvaluationCase) -> CaseResult:
     config = _vehicle_config(case.vehicle_id)
     service_code = case.expected_service_code or ""
-    history = (ServiceRecord(f"{case.id}-record", service_code, "completed"),)
+    # Serviced at the mileage under test, so the vehicle sits inside its current cycle.
+    history = (
+        ServiceRecord(f"{case.id}-record", service_code, "completed", case.mileage_km),
+    )
     recommendation = evaluate_maintenance(
         case.mileage_km,
         "2026-07-31",
@@ -331,7 +334,7 @@ def _grade_recommendation(case: EvaluationCase) -> CaseResult:
         evidence_available=case.archetype != "insufficient_evidence",
         completed_services=history if case.archetype == "completed" else (),
         declined_services=(
-            (ServiceRecord(f"{case.id}-decline", service_code, "declined"),)
+            (ServiceRecord(f"{case.id}-decline", service_code, "declined", case.mileage_km),)
             if case.archetype == "declined"
             else ()
         ),
