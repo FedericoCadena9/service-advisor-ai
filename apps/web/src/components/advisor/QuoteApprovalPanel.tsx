@@ -29,7 +29,16 @@ export function QuoteApprovalPanel({
   async function openReview() {
     setDecision(undefined);
     setError("");
-    setReview(await onOpenReview(APPROVAL_BUNDLE));
+    try {
+      setReview(await onOpenReview(APPROVAL_BUNDLE));
+    } catch {
+      // The API refuses when the check-in behind the review is gone, which happens after
+      // the demo instance restarts. Saying so beats an empty panel.
+      setReview(undefined);
+      setError(
+        "The quote could not be opened for approval; confirm the check-in again",
+      );
+    }
   }
 
   async function decide(choice: "approve" | "reject") {

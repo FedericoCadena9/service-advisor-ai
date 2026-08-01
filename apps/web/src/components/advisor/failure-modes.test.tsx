@@ -147,3 +147,24 @@ test("a failed advance keeps the delivery on screen", async () => {
   ).toBeVisible();
   expect(screen.getByText("Simulated delivery: queued")).toBeVisible();
 });
+
+test("a refused approval tells the Advisor instead of leaving the panel empty", async () => {
+  // The API answers 409 when the check-in behind a review is gone, which happens whenever
+  // the demo instance restarts. Swallowing it left the Advisor staring at nothing.
+  const { QuoteApprovalPanel } = await import("./QuoteApprovalPanel");
+  render(
+    <QuoteApprovalPanel
+      onOpenReview={vi.fn().mockRejectedValue(REFUSED)}
+      onDecide={vi.fn()}
+      onApproved={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Open approval" }));
+
+  expect(
+    await screen.findByText(
+      "The quote could not be opened for approval; confirm the check-in again",
+    ),
+  ).toBeVisible();
+});

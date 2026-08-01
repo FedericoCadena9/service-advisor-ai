@@ -16,7 +16,7 @@ export async function openQuoteReview(
     headers: { authorization: `Bearer ${token}`, ...traceHeaders(context) },
     path: { vehicle_id: context.vehicleId },
   })
-  if (!('data' in response) || !response.data) throw new Error('Quote review unavailable')
+  if (!('data' in response) || !response.data) throw Object.assign(new Error('Quote review unavailable'), { status: response.response?.status })
   return response.data
 }
 
