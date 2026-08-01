@@ -19,12 +19,13 @@ export function QuoteDraftPanel({ onDraft }: { onDraft: (serviceCodes: string[])
   }
 
   return (
-    <div>
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">Prices use the shop inventory and available bay capacity. A draft remains a draft until approval.</p>
       <Button onClick={() => void requestDraft()}>Draft quote</Button>
       {error && <p role="alert">{error}</p>}
       {draft && (
-        <table aria-label="Quote draft lines" className="mt-3 w-full text-sm">
-          <thead>
+        <div className="overflow-x-auto rounded-lg border border-white/10"><table aria-label="Quote draft lines" className="w-full min-w-180 text-left text-sm">
+          <thead className="bg-white/5 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th scope="col">Service</th>
               <th scope="col">Labor MXN</th>
@@ -36,7 +37,7 @@ export function QuoteDraftPanel({ onDraft }: { onDraft: (serviceCodes: string[])
               <th scope="col">Availability</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-white/8">
             {draft.lines.map((line) => (
               <tr key={line.service_code}>
                 <td>{line.service_code}</td>
@@ -50,15 +51,15 @@ export function QuoteDraftPanel({ onDraft }: { onDraft: (serviceCodes: string[])
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       {draft && (
-        <p className="mt-2">
+        <p className="rounded-lg border border-primary/20 bg-primary/7 p-3 text-sm text-primary">
           {`Subtotal ${draft.subtotal_mxn} + IVA ${draft.iva_mxn} = ${draft.total_mxn} MXN · ${draft.duration_minutes} min · ${draft.bay_slot_id ?? 'no bay slot'}`}
         </p>
       )}
       {draft?.warnings.map((warning) => (
-        <p key={warning} role="status">
+        <p key={warning} role="status" className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100">
           {warning}
         </p>
       ))}

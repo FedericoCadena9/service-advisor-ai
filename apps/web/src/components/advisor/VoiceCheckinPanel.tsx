@@ -42,9 +42,10 @@ export function VoiceCheckinPanel({
   }
 
   return (
-    <fieldset>
-      <legend>Voice check-in</legend>
-      <label htmlFor="voice-language">Transcription language</label>
+    <fieldset className="space-y-3">
+      <legend className="text-base font-semibold">Voice check-in</legend>
+      <p className="text-sm leading-5 text-muted-foreground">Capture a short customer concern in the language they used. Audio is deleted after confirmation.</p>
+      <label className="block text-sm font-medium" htmlFor="voice-language">Transcription language</label>
       <select
         id="voice-language"
         value={language}
@@ -53,7 +54,7 @@ export function VoiceCheckinPanel({
         <option value="es">Spanish</option>
         <option value="en">English</option>
       </select>
-      <label htmlFor="voice-duration">Recording seconds</label>
+      <label className="block text-sm font-medium" htmlFor="voice-duration">Recording seconds</label>
       <input
         id="voice-duration"
         type="number"
@@ -64,15 +65,15 @@ export function VoiceCheckinPanel({
       <Button type="button" onClick={() => void record()}>
         Transcribe voice note
       </Button>
-      {note?.state === 'failed' && <p>{note.failure_reason}</p>}
+      {note?.state === 'failed' && <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">{note.failure_reason}</p>}
       {note && note.state !== 'failed' && (
-        <div>
-          <ul aria-label="Transcript timestamps">
+        <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
+          <ul aria-label="Transcript timestamps" className="space-y-1 text-xs text-muted-foreground">
             {note.segments.map((segment) => (
               <li key={segment.starts_at_seconds}>{`${segment.starts_at_seconds}s — ${segment.text}`}</li>
             ))}
           </ul>
-          <label htmlFor="voice-transcript">Editable transcript</label>
+          <label className="block text-sm font-medium" htmlFor="voice-transcript">Editable transcript</label>
           <Textarea
             id="voice-transcript"
             value={transcript}
@@ -91,8 +92,8 @@ export function VoiceCheckinPanel({
           </Button>
         </div>
       )}
-      {note?.state === 'confirmed' && <p>Transcript confirmed and audio deleted</p>}
-      {error && <p>{error}</p>}
+      {note?.state === 'confirmed' && <p className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100">Transcript confirmed and audio deleted</p>}
+      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">{error}</p>}
     </fieldset>
   )
 }

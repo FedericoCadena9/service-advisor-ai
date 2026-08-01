@@ -39,10 +39,11 @@ export function QuoteApprovalPanel({
   }
 
   return (
-    <div>
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">The approval command is the boundary between a priced proposal and customer-facing work.</p>
       <Button onClick={() => void openReview()}>Open approval</Button>
       {review && (
-        <dl className="mt-3">
+        <dl className="grid gap-3 rounded-lg border border-white/10 bg-black/15 p-4 text-sm sm:grid-cols-2 [&_dt]:text-xs [&_dt]:uppercase [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dd]:mt-1 [&_dd]:font-medium">
           <dt>Approver</dt>
           <dd>{`${review.approver_role} · session ${review.approver_session_id}`}</dd>
           <dt>Selected services</dt>
@@ -53,11 +54,11 @@ export function QuoteApprovalPanel({
           <dd>{`${review.citations.rule_version} · page ${review.citations.citation_page}, ${review.citations.citation_section}`}</dd>
         </dl>
       )}
-      {review?.evidence_blocked && <p role="alert">{`Not approvable by any role: ${review.blocking_reason}`}</p>}
+      {review?.evidence_blocked && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">{`Not approvable by any role: ${review.blocking_reason}`}</p>}
       {review?.escalation_required && !review.evidence_blocked && (
         <div className="mt-3">
-          <p>{`Manager review required: ${review.escalation_reasons.join('; ')}`}</p>
-          <label htmlFor="escalation-reason">Manager reason</label>
+          <p className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100">{`Manager review required: ${review.escalation_reasons.join('; ')}`}</p>
+          <label className="mb-1.5 block text-sm font-medium" htmlFor="escalation-reason">Manager reason</label>
           <input
             id="escalation-reason"
             value={reason}
@@ -66,21 +67,21 @@ export function QuoteApprovalPanel({
         </div>
       )}
       {review && !review.evidence_blocked && (
-        <div className="mt-3">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={() => void decide('approve')}>Approve quote</Button>
-          <Button className="ml-2" onClick={() => void decide('reject')}>
+          <Button variant="outline" onClick={() => void decide('reject')}>
             Reject quote
           </Button>
         </div>
       )}
       {decision && (
-        <p role="status">
+        <p role="status" className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100">
           {decision.decision === 'approved'
             ? `Quote ${decision.quote_id} approved by ${decision.approver_role}`
             : `Quote rejected by ${decision.approver_role}: ${decision.reason}`}
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">{error}</p>}
     </div>
   )
 }

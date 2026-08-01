@@ -43,7 +43,8 @@ export function CustomerTimelinePanel({
   }
 
   return (
-    <div>
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">Messages stay simulated and refuse copy that invents a price or exceeds the approved quote.</p>
       <Button
         onClick={() =>
           void run(async () => {
@@ -54,7 +55,7 @@ export function CustomerTimelinePanel({
         Reserve appointment
       </Button>
       {appointment && (
-        <p>{`Simulated reservation ${appointment.bay_slot_id} at ${appointment.starts_at}`}</p>
+        <p className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100">{`Simulated reservation ${appointment.bay_slot_id} at ${appointment.starts_at}`}</p>
       )}
       <Button
         className="mt-2"
@@ -69,10 +70,10 @@ export function CustomerTimelinePanel({
         Preview message
       </Button>
       {preview && (
-        <div className="mt-2">
-          <label htmlFor="sms-text">Message to the customer</label>
+        <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-4">
+          <label className="block text-sm font-medium" htmlFor="sms-text">Message to the customer</label>
           <Textarea id="sms-text" value={text} onChange={(event) => setText(event.target.value)} />
-          <p>{`${preview.segments} segment(s) · ${preview.priorities.length} priorities`}</p>
+          <p className="text-xs text-muted-foreground">{`${preview.segments} segment(s) · ${preview.priorities.length} priorities`}</p>
           <Button
             onClick={() =>
               void run(
@@ -89,9 +90,9 @@ export function CustomerTimelinePanel({
         </div>
       )}
       {delivery && (
-        <div className="mt-2">
-          <p role="status">{`Simulated delivery: ${delivery.state}`}</p>
-          <p>{`Approved by ${delivery.approver_role} · ${delivery.rule_version} page ${delivery.citation_page}`}</p>
+        <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/7 p-4">
+          <p role="status" className="font-medium text-primary">{`Simulated delivery: ${delivery.state}`}</p>
+          <p className="text-sm text-muted-foreground">{`Approved by ${delivery.approver_role} · ${delivery.rule_version} page ${delivery.citation_page}`}</p>
           <Button
             onClick={() =>
               void run(async () => {
@@ -103,7 +104,7 @@ export function CustomerTimelinePanel({
           </Button>
         </div>
       )}
-      {error && <p>{error}</p>}
+      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-red-100">{error}</p>}
     </div>
   )
 }

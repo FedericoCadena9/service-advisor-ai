@@ -20,8 +20,9 @@ export function ServiceQuestionPanel({ onAskData }: { onAskData: (question: stri
   }
 
   return (
-    <div>
-      <label htmlFor="service-question">Ad hoc service question</label>
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">This surface accepts only approved, read-only service data questions.</p>
+      <label className="block text-sm font-medium" htmlFor="service-question">Ad hoc service question</label>
       <Textarea
         id="service-question"
         value={question}
@@ -31,13 +32,13 @@ export function ServiceQuestionPanel({ onAskData }: { onAskData: (question: stri
         Run read-only query
       </Button>
       {result && (
-        <div className="mt-3">
+        <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-4">
           <p>{result.answer}</p>
-          <pre aria-label="Accepted SQL">{result.sql}</pre>
-          <p>{`Views ${result.retrieval.views.join(', ')} · columns ${result.retrieval.columns.join(', ')} · limit ${result.retrieval.row_limit} · timeout ${result.retrieval.timeout_seconds}s · principal ${result.retrieval.principal}`}</p>
+          <pre aria-label="Accepted SQL" className="overflow-x-auto rounded-md border border-white/10 bg-black/30 p-3 text-xs text-primary">{result.sql}</pre>
+          <p className="text-xs leading-5 text-muted-foreground">{`Views ${result.retrieval.views.join(', ')} · columns ${result.retrieval.columns.join(', ')} · limit ${result.retrieval.row_limit} · timeout ${result.retrieval.timeout_seconds}s · principal ${result.retrieval.principal}`}</p>
         </div>
       )}
-      {error && <p>{error}</p>}
+      {error && <p className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100">{error}</p>}
     </div>
   )
 }
