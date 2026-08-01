@@ -13,7 +13,6 @@ export async function askContextualChat(
       question,
       vehicle_id: context.vehicleId,
       current_mileage_km: context.currentMileageKm,
-      provider_available: true,
     },
     headers: { authorization: `Bearer ${token}`, ...traceHeaders(context) },
   })

@@ -82,10 +82,6 @@ export type ChatRequest = {
      * Current Mileage Km
      */
     current_mileage_km: number;
-    /**
-     * Provider Available
-     */
-    provider_available: boolean;
 };
 
 /**

@@ -60,6 +60,7 @@ from service_advisor_api.observability import (
 )
 from service_advisor_api.operations import OperationsStore
 from service_advisor_api.overlays import DemoOverlay, OverlayStore
+from service_advisor_api.providers import select_provider
 from service_advisor_api.quotes import (
     InformationalServiceError,
     QuoteDraft,
@@ -244,7 +245,6 @@ class ChatRequest(BaseModel):
     question: str
     vehicle_id: str
     current_mileage_km: int
-    provider_available: bool
 
 
 class QuoteDraftRequest(BaseModel):
@@ -478,6 +478,7 @@ messaging_store = MessagingStore()
 semantic_gateway = SemanticQueryGateway()
 semantic_gateway.seed()
 voice_note_store = VoiceNoteStore()
+language_provider = select_provider()
 trace_recorder = TraceRecorder()
 _served_first_request = False
 DEMO_MODEL = "deterministic-demo"
@@ -1616,7 +1617,7 @@ def contextual_chat(
     reply = answer_contextual_question(
         request.question,
         _recommendation_for_request(claims, request.vehicle_id, request.current_mileage_km),
-        request.provider_available,
+        language_provider,
     )
     _record_span(
         x_trace_id,
@@ -1624,7 +1625,7 @@ def contextual_chat(
         kind="provider",
         cost_mxn=PROVIDER_CALL_COST_MXN,
         attributes={
-            "model": DEMO_MODEL,
+            "model": language_provider.name,
             "degraded": reply.degraded,
             "citation_page": reply.citation_page,
         },

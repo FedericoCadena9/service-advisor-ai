@@ -12,6 +12,7 @@ DIALECT = "sqlite"
 TENANT_COLUMN = "shop_id"
 ROW_LIMIT = 100
 TIMEOUT_SECONDS = 2.0
+PROGRESS_INSTRUCTIONS = 100
 PRINCIPAL = "semantic_reader"
 
 ALLOWED_VIEWS = {
@@ -211,11 +212,16 @@ class SemanticQueryGateway:
         for table in statement.find_all(exp.Table):
             if table.name.lower() not in ALLOWED_VIEWS:
                 raise UnsafeSqlError(f"{table.name.lower()} is not readable by {PRINCIPAL}")
+        if query.timeout_seconds <= 0:
+            # The budget was spent before the query started; do not touch the database.
+            raise QueryTimeoutError("The query exceeded the strict timeout")
         deadline = time.monotonic() + query.timeout_seconds
         with self._lock:
             self._shop_id = shop_id
+            # The handler only runs every N virtual-machine instructions, so a coarse
+            # interval means a short query is never checked at all.
             self._connection.set_progress_handler(
-                lambda: 1 if time.monotonic() > deadline else 0, 1_000
+                lambda: 1 if time.monotonic() > deadline else 0, PROGRESS_INSTRUCTIONS
             )
             try:
                 return tuple(self._connection.execute(query.sql).fetchall())
