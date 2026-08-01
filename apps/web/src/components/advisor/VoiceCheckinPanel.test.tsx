@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
+import { CHECKIN_GONE } from "../../api/failure";
 import { VoiceCheckinPanel } from "./VoiceCheckinPanel";
 
 const TRANSCRIBED = {
@@ -88,6 +89,24 @@ test("reports the confirmed transcript and deleted audio", async () => {
   ).toBeVisible();
   expect(props.onConfirm).toHaveBeenCalledWith("note-1", "Rechinido al frenar");
   expect(props.onConfirmed).toHaveBeenCalledWith("note-1");
+});
+
+/** What if the note was dropped between recording and confirming, instead of surviving? */
+test("a confirmation whose voice note is gone asks for the check-in again", async () => {
+  const props = renderPanel({
+    onConfirm: vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error("gone"), { status: 404 })),
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Transcribe voice note" }),
+  );
+  await screen.findByLabelText("Editable transcript");
+
+  fireEvent.click(screen.getByRole("button", { name: "Confirm transcript" }));
+
+  expect(await screen.findByText(CHECKIN_GONE)).toBeVisible();
+  expect(props.onConfirmed).not.toHaveBeenCalled();
 });
 
 test("keeps manual entry available after a provider failure", async () => {

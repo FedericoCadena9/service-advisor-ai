@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { failureMessage } from "../../api/failure";
 import type { DashboardResponse } from "../../api/generated/types.gen";
 
 export function QualityDashboard({
@@ -13,7 +14,9 @@ export function QualityDashboard({
   useEffect(() => {
     onLoad()
       .then(setDashboard)
-      .catch(() => setError("Quality dashboard unavailable"));
+      .catch((failure: unknown) =>
+        setError(failureMessage(failure, "Quality dashboard unavailable")),
+      );
   }, [onLoad]);
 
   if (error)

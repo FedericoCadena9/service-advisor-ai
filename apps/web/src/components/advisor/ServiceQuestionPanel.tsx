@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { failureMessage } from "../../api/failure";
 import type { ServiceQuestionResponse } from "../../api/generated/types.gen";
 
 export function ServiceQuestionPanel({
@@ -17,9 +18,14 @@ export function ServiceQuestionPanel({
     try {
       setResult(await onAskData(question));
       setError("");
-    } catch {
+    } catch (failure) {
       setResult(undefined);
-      setError("No supported read-only query answers this question");
+      setError(
+        failureMessage(
+          failure,
+          "No supported read-only query answers this question",
+        ),
+      );
     }
   }
 

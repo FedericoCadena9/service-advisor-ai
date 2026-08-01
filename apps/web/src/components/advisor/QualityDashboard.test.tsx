@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
+import { CHECKIN_GONE } from "../../api/failure";
 import { QualityDashboard } from "./QualityDashboard";
 
 const DASHBOARD = {
@@ -45,4 +46,17 @@ test("reports when the dashboard cannot be read", async () => {
   expect(
     await screen.findByText("Quality dashboard unavailable"),
   ).toBeVisible();
+});
+
+/** What if the workspace the dashboard reads was dropped, instead of being merely unreadable? */
+test("a dashboard whose workspace is gone asks for the check-in again", async () => {
+  render(
+    <QualityDashboard
+      onLoad={vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("gone"), { status: 404 }))}
+    />,
+  );
+
+  expect(await screen.findByText(CHECKIN_GONE)).toBeVisible();
 });

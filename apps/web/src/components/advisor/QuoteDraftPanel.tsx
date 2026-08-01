@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { failureMessage } from "../../api/failure";
 import type { QuoteDraftResponse } from "../../api/generated/types.gen";
 
 const DRAFT_BUNDLE = ["HONDA-A1", "HONDA-TIRE-ROTATION", "HONDA-CABIN-FILTER"];
@@ -17,8 +18,9 @@ export function QuoteDraftPanel({
     try {
       setDraft(await onDraft(DRAFT_BUNDLE));
       setError("");
-    } catch {
-      setError("Quote draft unavailable");
+    } catch (failure) {
+      setDraft(undefined);
+      setError(failureMessage(failure, "Quote draft unavailable"));
     }
   }
 

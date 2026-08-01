@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { failureMessage } from "../../api/failure";
 import type {
   VoiceNoteRequest,
   VoiceNoteResponse,
@@ -39,8 +40,26 @@ export function VoiceCheckinPanel({
       setNote(recorded);
       setTranscript(recorded.transcript);
       setError("");
-    } catch {
-      setError("Transcription is unavailable; enter the concern manually");
+    } catch (failure) {
+      setError(
+        failureMessage(
+          failure,
+          "Transcription is unavailable; enter the concern manually",
+        ),
+      );
+    }
+  }
+
+  async function confirm(noteId: string) {
+    try {
+      const confirmed = await onConfirm(noteId, transcript);
+      setNote(confirmed);
+      onConfirmed(confirmed.id);
+      setError("");
+    } catch (failure) {
+      setError(
+        failureMessage(failure, "The transcript could not be confirmed"),
+      );
     }
   }
 
@@ -105,12 +124,7 @@ export function VoiceCheckinPanel({
           />
           <Button
             type="button"
-            onClick={() =>
-              void onConfirm(note.id, transcript).then((confirmed) => {
-                setNote(confirmed);
-                onConfirmed(confirmed.id);
-              })
-            }
+            onClick={() => void confirm(note.id)}
           >
             Confirm transcript
           </Button>

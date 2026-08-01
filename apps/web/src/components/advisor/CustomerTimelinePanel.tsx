@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { failureMessage } from "../../api/failure";
 import type {
   AppointmentResponse,
   SmsDeliveryResponse,
@@ -43,10 +44,7 @@ export function CustomerTimelinePanel({
       await action();
       setError("");
     } catch (failure) {
-      const status = (failure as { status?: number }).status;
-      const isRefusal =
-        typeof status === "number" && status >= 400 && status < 500;
-      setError(isRefusal && refused ? refused : unavailable);
+      setError(failureMessage(failure, unavailable, refused));
     }
   }
 

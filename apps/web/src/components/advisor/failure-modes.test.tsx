@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
+import { CHECKIN_GONE } from "../../api/failure";
 import { CIVIC_CITATIONS } from "../../test/fixtures";
 import { CustomerTimelinePanel } from "./CustomerTimelinePanel";
 import { QuoteDraftPanel } from "./QuoteDraftPanel";
@@ -9,6 +10,8 @@ import { ServiceQuestionPanel } from "./ServiceQuestionPanel";
 /** The API layer throws a plain Error for a dead network and for a refusal alike. */
 const NETWORK_DOWN = new Error("Failed to fetch");
 const REFUSED = Object.assign(new Error("rejected"), { status: 422 });
+/** A restarted demo instance answers 409 or 404: the signed token outlives the state. */
+const CHECKIN_LOST = Object.assign(new Error("conflict"), { status: 409 });
 
 const APPOINTMENT = {
   id: "appointment-1",
@@ -44,6 +47,17 @@ test("a dead network while drafting tells the Advisor, instead of failing silent
   );
 });
 
+/** What if the instance restarted mid-journey instead of holding the check-in behind the quote? */
+test("a draft whose check-in is gone asks for the check-in again", async () => {
+  render(
+    <QuoteDraftPanel onDraft={vi.fn().mockRejectedValue(CHECKIN_LOST)} />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Draft quote" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(CHECKIN_GONE);
+});
+
 test("a dead network while asking a data question is reported", async () => {
   render(
     <ServiceQuestionPanel
@@ -60,6 +74,19 @@ test("a dead network while asking a data question is reported", async () => {
   ).toBeVisible();
 });
 
+/** What if the session outlived the records the query reads, instead of the query being unsupported? */
+test("a data question whose state is gone asks for the check-in again", async () => {
+  render(
+    <ServiceQuestionPanel
+      onAskData={vi.fn().mockRejectedValue(CHECKIN_LOST)}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Run read-only query" }));
+
+  expect(await screen.findByText(CHECKIN_GONE)).toBeVisible();
+});
+
 test("a failed reservation is reported rather than leaving the panel blank", async () => {
   render(
     <CustomerTimelinePanel
@@ -73,6 +100,20 @@ test("a failed reservation is reported rather than leaving the panel blank", asy
   expect(
     await screen.findByText("The appointment could not be reserved"),
   ).toBeVisible();
+});
+
+/** What if the quote behind the appointment vanished, instead of the slot being taken? */
+test("a reservation whose quote is gone asks for the check-in again", async () => {
+  render(
+    <CustomerTimelinePanel
+      quoteId="quote-1"
+      {...timeline({ onReserve: vi.fn().mockRejectedValue(CHECKIN_LOST) })}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Reserve appointment" }));
+
+  expect(await screen.findByText(CHECKIN_GONE)).toBeVisible();
 });
 
 test("a network failure and a refused message read differently", async () => {
@@ -148,13 +189,28 @@ test("a failed advance keeps the delivery on screen", async () => {
   expect(screen.getByText("Simulated delivery: queued")).toBeVisible();
 });
 
-test("a refused approval tells the Advisor instead of leaving the panel empty", async () => {
-  // The API answers 409 when the check-in behind a review is gone, which happens whenever
-  // the demo instance restarts. Swallowing it left the Advisor staring at nothing.
+/** What if the check-in behind the review was dropped by a restart, instead of the review being refused? */
+test("an approval whose check-in is gone asks for the check-in again", async () => {
   const { QuoteApprovalPanel } = await import("./QuoteApprovalPanel");
   render(
     <QuoteApprovalPanel
-      onOpenReview={vi.fn().mockRejectedValue(REFUSED)}
+      onOpenReview={vi.fn().mockRejectedValue(CHECKIN_LOST)}
+      onDecide={vi.fn()}
+      onApproved={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Open approval" }));
+
+  expect(await screen.findByText(CHECKIN_GONE)).toBeVisible();
+});
+
+/** What if the API is merely unreachable — is the Advisor still told to redo the check-in? */
+test("an unreachable approval does not send the Advisor back to the check-in", async () => {
+  const { QuoteApprovalPanel } = await import("./QuoteApprovalPanel");
+  render(
+    <QuoteApprovalPanel
+      onOpenReview={vi.fn().mockRejectedValue(NETWORK_DOWN)}
       onDecide={vi.fn()}
       onApproved={vi.fn()}
     />,
@@ -163,8 +219,6 @@ test("a refused approval tells the Advisor instead of leaving the panel empty", 
   fireEvent.click(screen.getByRole("button", { name: "Open approval" }));
 
   expect(
-    await screen.findByText(
-      "The quote could not be opened for approval; confirm the check-in again",
-    ),
+    await screen.findByText("The quote could not be opened for approval"),
   ).toBeVisible();
 });

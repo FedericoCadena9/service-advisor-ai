@@ -2,7 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
 
 import App from './App'
+import { CHECKIN_GONE } from './api/failure'
 import { fetchHealth } from './api/health'
+import { fetchRecommendation } from './api/recommendations'
 
 vi.mock('./api/health', () => ({
   fetchHealth: vi.fn().mockResolvedValue({ status: 'healthy' }),
@@ -19,6 +21,27 @@ vi.mock('./api/demo-session', () => ({
     },
   }),
 }))
+
+vi.mock('./api/checkins', () => ({
+  saveCheckin: vi.fn().mockResolvedValue({ vehicle_id: 'honda-civic-2019-lx' }),
+}))
+
+vi.mock('./api/recommendations', () => ({
+  fetchRecommendation: vi.fn().mockResolvedValue({
+    state: 'due_now',
+    service_code: 'HONDA-A1',
+    due_reason: 'The Maintenance Minder decides',
+  }),
+}))
+
+async function confirmCheckin() {
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Enter as Advisor' }))
+  fireEvent.change(await screen.findByLabelText('Current mileage (km)'), {
+    target: { value: '48000' },
+  })
+  fireEvent.submit(screen.getByRole('form', { name: 'Check-in details' }))
+}
 
 test('shows the healthy demo environment state', async () => {
   render(<App />)
@@ -72,4 +95,27 @@ test('shows the grounded recommendation console in an Advisor workspace', async 
   fireEvent.click(await screen.findByRole('button', { name: 'Enter as Advisor' }))
 
   expect(await screen.findByText('Grounded maintenance recommendation')).toBeVisible()
+})
+
+/** What if the instance restarted between saving the check-in and reading the rule for it? */
+test('a recommendation whose check-in is gone asks for the check-in again', async () => {
+  vi.mocked(fetchRecommendation).mockRejectedValueOnce(
+    Object.assign(new Error('conflict'), { status: 409 }),
+  )
+
+  await confirmCheckin()
+
+  expect(await screen.findByText(CHECKIN_GONE)).toBeVisible()
+})
+
+/** What if only the recommendation failed — was the check-in in front of it really not saved? */
+test('a saved check-in is not reported as unsaved when the recommendation fails', async () => {
+  vi.mocked(fetchRecommendation).mockRejectedValueOnce(new Error('offline'))
+
+  await confirmCheckin()
+
+  expect(
+    await screen.findByText('The recommendation could not be prepared'),
+  ).toBeVisible()
+  expect(screen.getByText('Check-in confirmed')).toBeVisible()
 })

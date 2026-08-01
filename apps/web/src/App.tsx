@@ -17,6 +17,7 @@ import { saveCheckin } from "./api/checkins";
 import type { AdvisorContext } from "./api/advisor-context";
 import { fetchQualityDashboard } from "./api/dashboard";
 import { enterDemoWorkspace } from "./api/demo-session";
+import { failureMessage } from "./api/failure";
 import type {
   CreateDemoSessionRequest,
   VehicleSearchResponse,
@@ -179,9 +180,20 @@ export default function App() {
         voice_note_id: voiceNoteId,
       });
       setCheckinSaved(true);
+    } catch (failure) {
+      setSessionError(failureMessage(failure, "Check-in could not be saved"));
+      return;
+    }
+    // The recommendation is a second call over the state the check-in just wrote, so its
+    // failure is its own: saying the check-in was lost would send the Advisor to redo work
+    // that landed.
+    try {
       setRecommendation(await fetchRecommendation(token, advisorContext()));
-    } catch {
-      setSessionError("Check-in could not be saved");
+      setSessionError(null);
+    } catch (failure) {
+      setSessionError(
+        failureMessage(failure, "The recommendation could not be prepared"),
+      );
     }
   }
 

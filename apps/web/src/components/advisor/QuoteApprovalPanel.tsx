@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { failureMessage } from "../../api/failure";
 import type {
   QuoteDecisionResponse,
   QuoteReviewResponse,
@@ -31,16 +32,20 @@ export function QuoteApprovalPanel({
     setError("");
     try {
       setReview(await onOpenReview(APPROVAL_BUNDLE));
-    } catch {
-      // The API refuses when the check-in behind the review is gone, which happens after
-      // the demo instance restarts. Saying so beats an empty panel.
+    } catch (failure) {
       setReview(undefined);
       setError(
-        "The quote could not be opened for approval; confirm the check-in again",
+        failureMessage(failure, "The quote could not be opened for approval"),
       );
     }
   }
 
+  /**
+   * The decision endpoint is the one place a 409 is ambiguous: it answers the same status
+   * for a lost check-in and for a quote invalidated by changed inputs. Opening the review
+   * is what proves the check-in is still there, and these buttons only exist once it
+   * succeeded, so a 409 here is read as the invalidation it almost always is.
+   */
   async function decide(choice: "approve" | "reject") {
     if (!review) return;
     try {
